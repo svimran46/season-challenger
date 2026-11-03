@@ -1,0 +1,15 @@
+{
+  "name": "@season/feed",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Football data feed interface and adapters, including an offline fake feed.",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@season/shared": "workspace:*"
+  }
+}
