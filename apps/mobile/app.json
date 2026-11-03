@@ -1,0 +1,21 @@
+{
+  "expo": {
+    "name": "Season Challenger",
+    "slug": "season-challenger",
+    "scheme": "seasonchallenger",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "automatic",
+    "plugins": ["expo-router"],
+    "ios": {
+      "bundleIdentifier": "com.seasonchallenger.app"
+    },
+    "android": {
+      "package": "com.seasonchallenger.app"
+    },
+    "web": {
+      "bundler": "metro",
+      "output": "single"
+    }
+  }
+}
