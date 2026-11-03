@@ -12,6 +12,8 @@ import { FOOTBALL_FEED } from '../common/tokens';
 export interface FixtureSummary extends Fixture {
   home: Club;
   away: Club;
+  /** Final score once the match is finished; null before then. */
+  score: { home: number; away: number } | null;
 }
 
 export interface FixtureDetail extends FixtureSummary {
@@ -34,7 +36,7 @@ export class FixturesService {
       this.feed.listFixtures(filter),
       this.feed.listClubs(),
     ]);
-    return fixtures.map((f) => this.withClubs(f, clubs));
+    return Promise.all(fixtures.map((f) => this.summarise(f, clubs)));
   }
 
   async get(fixtureId: string): Promise<FixtureDetail> {
@@ -44,7 +46,7 @@ export class FixturesService {
       this.feed.listClubs(),
       this.feed.listPlayers([fixture.homeClubId, fixture.awayClubId]),
     ]);
-    return { ...this.withClubs(fixture, clubs), players };
+    return { ...(await this.summarise(fixture, clubs)), players };
   }
 
   /** Fantasy points per player, highest first. Only available once the match is finished. */
@@ -62,12 +64,18 @@ export class FixturesService {
     return { fixtureId, version: stats.version, players };
   }
 
-  private withClubs(fixture: Fixture, clubs: Club[]): FixtureSummary {
+  private async summarise(fixture: Fixture, clubs: Club[]): Promise<FixtureSummary> {
     const find = (id: string) => {
       const club = clubs.find((c) => c.id === id);
       if (!club) throw new Error(`Feed returned unknown club ${id}`);
       return club;
     };
-    return { ...fixture, home: find(fixture.homeClubId), away: find(fixture.awayClubId) };
+    const stats = fixture.status === 'finished' ? await this.feed.getStats(fixture.id) : undefined;
+    return {
+      ...fixture,
+      home: find(fixture.homeClubId),
+      away: find(fixture.awayClubId),
+      score: stats ? { home: stats.home.goals, away: stats.away.goals } : null,
+    };
   }
 }

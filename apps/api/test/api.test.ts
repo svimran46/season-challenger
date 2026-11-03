@@ -41,8 +41,10 @@ describe('API', () => {
     expect(res.body).toHaveLength(4);
     expect(res.body[0]).toMatchObject({ gameweek: 4, status: 'scheduled' });
     expect(res.body[0].home.name).toEqual(expect.any(String));
+    expect(res.body[0].score).toBeNull();
     const finished = await http().get('/v1/fixtures?status=finished').expect(200);
     expect(finished.body).toHaveLength(12);
+    expect(finished.body[0].score).toEqual({ home: expect.any(Number), away: expect.any(Number) });
   });
 
   it('rejects a bad query', async () => {

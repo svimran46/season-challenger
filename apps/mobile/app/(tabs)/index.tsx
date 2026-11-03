@@ -74,7 +74,13 @@ function FixtureCard({ fixture }: { fixture: FixtureSummary }) {
         <Card>
           <View style={styles.row}>
             <ClubName name={fixture.home.name} colour={fixture.home.colour} />
-            <Text style={[styles.vs, { color: t.muted }]}>v</Text>
+            {fixture.score ? (
+              <Text style={[styles.score, { color: t.text }]}>
+                {fixture.score.home} – {fixture.score.away}
+              </Text>
+            ) : (
+              <Text style={[styles.vs, { color: t.muted }]}>v</Text>
+            )}
             <ClubName name={fixture.away.name} colour={fixture.away.colour} alignRight />
           </View>
           <View style={[styles.row, styles.meta]}>
@@ -136,6 +142,7 @@ const styles = StyleSheet.create({
   meta: { marginTop: 12 },
   chips: { marginTop: 12, justifyContent: 'flex-start', gap: 8 },
   vs: { marginHorizontal: 8 },
+  score: { marginHorizontal: 8, fontSize: 18, fontWeight: '700', fontVariant: ['tabular-nums'] },
   club: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 8 },
   clubRight: { flexDirection: 'row-reverse' },
   dot: { width: 12, height: 12, borderRadius: 6 },

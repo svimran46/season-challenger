@@ -20,3 +20,8 @@ export function countdown(iso: string, now = Date.now()): string {
   if (hours > 0) return `${hours}h ${minutes % 60}m`;
   return `${minutes}m`;
 }
+
+/** "1 pt", "0 pts", "-1 pts". */
+export function formatPoints(points: number): string {
+  return `${points} ${points === 1 ? 'pt' : 'pts'}`;
+}

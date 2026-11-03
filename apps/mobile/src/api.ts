@@ -13,6 +13,8 @@ const BASE_URL = process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:3000';
 export interface FixtureSummary extends Fixture {
   home: Club;
   away: Club;
+  /** Final score once the match is finished; null before then. */
+  score: { home: number; away: number } | null;
 }
 
 export interface FixtureDetail extends FixtureSummary {

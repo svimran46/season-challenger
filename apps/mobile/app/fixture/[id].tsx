@@ -3,7 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Stack, useLocalSearchParams } from 'expo-router';
 import { SectionList, StyleSheet, Text, View } from 'react-native';
 import { api } from '../../src/api';
-import { countdown, formatKickoff } from '../../src/format';
+import { countdown, formatKickoff, formatPoints } from '../../src/format';
 import { useTheme } from '../../src/theme';
 import { Card, Chip, Loading, Message, Screen } from '../../src/ui';
 
@@ -52,7 +52,7 @@ export default function FixtureScreen() {
           <View style={styles.header}>
             <Card>
               <Text style={[styles.title, { color: t.text }]}>
-                {f.home.name} v {f.away.name}
+                {f.home.name} {f.score ? `${f.score.home} – ${f.score.away}` : 'v'} {f.away.name}
               </Text>
               <Text style={{ color: t.muted, marginTop: 4 }}>
                 {formatKickoff(f.kickoffAt)}
@@ -75,7 +75,9 @@ export default function FixtureScreen() {
               <Text style={{ color: t.muted, fontSize: 12 }}>{clubOf(item)}</Text>
             </View>
             <Text style={{ color: t.text, fontWeight: '600' }}>
-              {finished ? `${pointsOf.get(item.id) ?? 0} pts` : `${item.credits.toFixed(1)} cr`}
+              {finished
+                ? formatPoints(pointsOf.get(item.id) ?? 0)
+                : `${item.credits.toFixed(1)} cr`}
             </Text>
           </View>
         )}
