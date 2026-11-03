@@ -168,4 +168,12 @@ export class InMemoryLedger implements LedgerReader {
   all(): readonly Transaction[] {
     return this.transactions;
   }
+
+  /** Drops every transaction after the first `count`: the in-memory store's rollback. */
+  truncate(count: number): void {
+    for (const t of this.transactions.splice(count)) {
+      this.byKey.delete(t.idempotencyKey);
+      for (const p of t.postings) this.balances.set(p.account, this.balance(p.account) - p.amount);
+    }
+  }
 }

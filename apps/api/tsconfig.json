@@ -4,5 +4,12 @@
     "experimentalDecorators": true,
     "types": ["node"]
   },
-  "include": ["src", "test", "tsup.config.ts", "vitest.config.ts", "drizzle.config.ts"]
+  "include": [
+    "src",
+    "test",
+    "tsup.config.ts",
+    "vitest.config.ts",
+    "vitest.db.config.ts",
+    "drizzle.config.ts"
+  ]
 }

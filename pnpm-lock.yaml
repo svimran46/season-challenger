@@ -35,6 +35,9 @@ importers:
       '@season/shared':
         specifier: workspace:*
         version: link:../../packages/shared
+      '@season/wallet':
+        specifier: workspace:*
+        version: link:../../packages/wallet
       drizzle-orm:
         specifier: ^0.45.4
         version: 0.45.4(postgres@4.0.0)

@@ -1,5 +1,5 @@
 {
-  "id": "62ebf9be-b51a-4236-a544-7b50f9e27850",
+  "id": "f1ee0cee-9165-4086-9b2f-30c98cc1c333",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "version": "7",
   "dialect": "postgresql",
@@ -93,6 +93,31 @@
           "primaryKey": false,
           "notNull": false
         },
+        "birth_date": {
+          "name": "birth_date",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "id_verified_at": {
+          "name": "id_verified_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "id_document_hash": {
+          "name": "id_document_hash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "redemptions_blocked": {
+          "name": "redemptions_blocked",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
         "created_at": {
           "name": "created_at",
           "type": "timestamp with time zone",
@@ -124,6 +149,13 @@
           "nullsNotDistinct": false,
           "columns": [
             "auth_id"
+          ]
+        },
+        "app_user_id_document_hash_unique": {
+          "name": "app_user_id_document_hash_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "id_document_hash"
           ]
         }
       },
@@ -374,13 +406,20 @@
           "primaryKey": false,
           "notNull": true
         },
-        "type": {
-          "name": "type",
-          "type": "contest_type",
+        "format": {
+          "name": "format",
+          "type": "contest_format",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "status": {
+          "name": "status",
+          "type": "contest_status",
           "typeSchema": "public",
           "primaryKey": false,
           "notNull": true,
-          "default": "'public'"
+          "default": "'open'"
         },
         "invite_code": {
           "name": "invite_code",
@@ -388,11 +427,61 @@
           "primaryKey": false,
           "notNull": false
         },
+        "created_by": {
+          "name": "created_by",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "entry_fee": {
+          "name": "entry_fee",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
         "capacity": {
           "name": "capacity",
           "type": "integer",
           "primaryKey": false,
-          "notNull": false
+          "notNull": true
+        },
+        "min_entries": {
+          "name": "min_entries",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "guaranteed": {
+          "name": "guaranteed",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "platform_fee_bps": {
+          "name": "platform_fee_bps",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "max_bonus_share_bps": {
+          "name": "max_bonus_share_bps",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "prize_table": {
+          "name": "prize_table",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "entry_count": {
+          "name": "entry_count",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
         },
         "created_at": {
           "name": "created_at",
@@ -400,6 +489,12 @@
           "primaryKey": false,
           "notNull": true,
           "default": "now()"
+        },
+        "settled_at": {
+          "name": "settled_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
         }
       },
       "indexes": {
@@ -408,6 +503,12 @@
           "columns": [
             {
               "expression": "fixture_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "status",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
@@ -432,6 +533,19 @@
           ],
           "onDelete": "no action",
           "onUpdate": "no action"
+        },
+        "contest_created_by_app_user_id_fk": {
+          "name": "contest_created_by_app_user_id_fk",
+          "tableFrom": "contest",
+          "tableTo": "app_user",
+          "columnsFrom": [
+            "created_by"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -445,21 +559,53 @@
         }
       },
       "policies": {},
-      "checkConstraints": {},
+      "checkConstraints": {
+        "contest_entry_fee_positive": {
+          "name": "contest_entry_fee_positive",
+          "value": "\"contest\".\"entry_fee\" > 0"
+        },
+        "contest_sizes": {
+          "name": "contest_sizes",
+          "value": "\"contest\".\"capacity\" >= 2 and \"contest\".\"min_entries\" between 2 and \"contest\".\"capacity\" and \"contest\".\"entry_count\" between 0 and \"contest\".\"capacity\""
+        },
+        "contest_invite_code_private_only": {
+          "name": "contest_invite_code_private_only",
+          "value": "(\"contest\".\"format\" = 'private') = (\"contest\".\"invite_code\" is not null)"
+        }
+      },
       "isRLSEnabled": false
     },
     "public.contest_entry": {
       "name": "contest_entry",
       "schema": "",
       "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
         "contest_id": {
           "name": "contest_id",
           "type": "uuid",
           "primaryKey": false,
           "notNull": true
         },
+        "user_id": {
+          "name": "user_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
         "squad_id": {
           "name": "squad_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "entry_txn_id": {
+          "name": "entry_txn_id",
           "type": "uuid",
           "primaryKey": false,
           "notNull": true
@@ -476,6 +622,12 @@
           "primaryKey": false,
           "notNull": false
         },
+        "prize": {
+          "name": "prize",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
         "created_at": {
           "name": "created_at",
           "type": "timestamp with time zone",
@@ -484,7 +636,29 @@
           "default": "now()"
         }
       },
-      "indexes": {},
+      "indexes": {
+        "contest_entry_user_idx": {
+          "name": "contest_entry_user_idx",
+          "columns": [
+            {
+              "expression": "user_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "created_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
       "foreignKeys": {
         "contest_entry_contest_id_contest_id_fk": {
           "name": "contest_entry_contest_id_contest_id_fk",
@@ -496,7 +670,20 @@
           "columnsTo": [
             "id"
           ],
-          "onDelete": "cascade",
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "contest_entry_user_id_app_user_id_fk": {
+          "name": "contest_entry_user_id_app_user_id_fk",
+          "tableFrom": "contest_entry",
+          "tableTo": "app_user",
+          "columnsFrom": [
+            "user_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
           "onUpdate": "no action"
         },
         "contest_entry_squad_id_squad_id_fk": {
@@ -511,14 +698,108 @@
           ],
           "onDelete": "no action",
           "onUpdate": "no action"
+        },
+        "contest_entry_entry_txn_id_ledger_transaction_id_fk": {
+          "name": "contest_entry_entry_txn_id_ledger_transaction_id_fk",
+          "tableFrom": "contest_entry",
+          "tableTo": "ledger_transaction",
+          "columnsFrom": [
+            "entry_txn_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
         }
       },
-      "compositePrimaryKeys": {
-        "contest_entry_contest_id_squad_id_pk": {
-          "name": "contest_entry_contest_id_squad_id_pk",
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "contest_entry_user_uq": {
+          "name": "contest_entry_user_uq",
+          "nullsNotDistinct": false,
+          "columns": [
+            "contest_id",
+            "user_id"
+          ]
+        },
+        "contest_entry_squad_uq": {
+          "name": "contest_entry_squad_uq",
+          "nullsNotDistinct": false,
           "columns": [
             "contest_id",
             "squad_id"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.daily_check_in": {
+      "name": "daily_check_in",
+      "schema": "",
+      "columns": {
+        "user_id": {
+          "name": "user_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "local_date": {
+          "name": "local_date",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "streak": {
+          "name": "streak",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "reward_txn_id": {
+          "name": "reward_txn_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "daily_check_in_user_id_app_user_id_fk": {
+          "name": "daily_check_in_user_id_app_user_id_fk",
+          "tableFrom": "daily_check_in",
+          "tableTo": "app_user",
+          "columnsFrom": [
+            "user_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "daily_check_in_reward_txn_id_ledger_transaction_id_fk": {
+          "name": "daily_check_in_reward_txn_id_ledger_transaction_id_fk",
+          "tableFrom": "daily_check_in",
+          "tableTo": "ledger_transaction",
+          "columnsFrom": [
+            "reward_txn_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "daily_check_in_user_id_local_date_pk": {
+          "name": "daily_check_in_user_id_local_date_pk",
+          "columns": [
+            "user_id",
+            "local_date"
           ]
         }
       },
@@ -795,6 +1076,186 @@
         }
       },
       "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.ledger_balance": {
+      "name": "ledger_balance",
+      "schema": "",
+      "columns": {
+        "account": {
+          "name": "account",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "balance": {
+          "name": "balance",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "ledger_balance_non_negative": {
+          "name": "ledger_balance_non_negative",
+          "value": "\"ledger_balance\".\"balance\" >= 0 or \"ledger_balance\".\"account\" like 'system:%'"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.ledger_posting": {
+      "name": "ledger_posting",
+      "schema": "",
+      "columns": {
+        "transaction_id": {
+          "name": "transaction_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "account": {
+          "name": "account",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "amount": {
+          "name": "amount",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {
+        "ledger_posting_account_idx": {
+          "name": "ledger_posting_account_idx",
+          "columns": [
+            {
+              "expression": "account",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "ledger_posting_transaction_id_ledger_transaction_id_fk": {
+          "name": "ledger_posting_transaction_id_ledger_transaction_id_fk",
+          "tableFrom": "ledger_posting",
+          "tableTo": "ledger_transaction",
+          "columnsFrom": [
+            "transaction_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "ledger_posting_transaction_id_account_pk": {
+          "name": "ledger_posting_transaction_id_account_pk",
+          "columns": [
+            "transaction_id",
+            "account"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "ledger_posting_nonzero": {
+          "name": "ledger_posting_nonzero",
+          "value": "\"ledger_posting\".\"amount\" <> 0"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.ledger_transaction": {
+      "name": "ledger_transaction",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "sequence": {
+          "name": "sequence",
+          "type": "bigserial",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "idempotency_key": {
+          "name": "idempotency_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "kind": {
+          "name": "kind",
+          "type": "ledger_kind",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "meta": {
+          "name": "meta",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'{}'::jsonb"
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "ledger_transaction_sequence_unique": {
+          "name": "ledger_transaction_sequence_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "sequence"
+          ]
+        },
+        "ledger_transaction_idempotency_key_unique": {
+          "name": "ledger_transaction_idempotency_key_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "idempotency_key"
+          ]
+        }
+      },
       "policies": {},
       "checkConstraints": {},
       "isRLSEnabled": false
@@ -1499,15 +1960,442 @@
       "policies": {},
       "checkConstraints": {},
       "isRLSEnabled": false
+    },
+    "public.voucher": {
+      "name": "voucher",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "code": {
+          "name": "code",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "user_id": {
+          "name": "user_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "offer_id": {
+          "name": "offer_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "partner_id": {
+          "name": "partner_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "title": {
+          "name": "title",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "discount": {
+          "name": "discount",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "cost_coins": {
+          "name": "cost_coins",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "issued_at": {
+          "name": "issued_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "expires_at": {
+          "name": "expires_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "used_at": {
+          "name": "used_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "used_reference": {
+          "name": "used_reference",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "cancelled_at": {
+          "name": "cancelled_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "redemption_txn_id": {
+          "name": "redemption_txn_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "refund_txn_id": {
+          "name": "refund_txn_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {
+        "voucher_user_idx": {
+          "name": "voucher_user_idx",
+          "columns": [
+            {
+              "expression": "user_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "issued_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "voucher_user_id_app_user_id_fk": {
+          "name": "voucher_user_id_app_user_id_fk",
+          "tableFrom": "voucher",
+          "tableTo": "app_user",
+          "columnsFrom": [
+            "user_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "voucher_offer_id_voucher_offer_id_fk": {
+          "name": "voucher_offer_id_voucher_offer_id_fk",
+          "tableFrom": "voucher",
+          "tableTo": "voucher_offer",
+          "columnsFrom": [
+            "offer_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "voucher_partner_id_voucher_partner_id_fk": {
+          "name": "voucher_partner_id_voucher_partner_id_fk",
+          "tableFrom": "voucher",
+          "tableTo": "voucher_partner",
+          "columnsFrom": [
+            "partner_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "voucher_redemption_txn_id_ledger_transaction_id_fk": {
+          "name": "voucher_redemption_txn_id_ledger_transaction_id_fk",
+          "tableFrom": "voucher",
+          "tableTo": "ledger_transaction",
+          "columnsFrom": [
+            "redemption_txn_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "voucher_refund_txn_id_ledger_transaction_id_fk": {
+          "name": "voucher_refund_txn_id_ledger_transaction_id_fk",
+          "tableFrom": "voucher",
+          "tableTo": "ledger_transaction",
+          "columnsFrom": [
+            "refund_txn_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "voucher_code_unique": {
+          "name": "voucher_code_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "code"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "voucher_used_or_cancelled": {
+          "name": "voucher_used_or_cancelled",
+          "value": "not (\"voucher\".\"used_at\" is not null and \"voucher\".\"cancelled_at\" is not null)"
+        },
+        "voucher_expiry_after_issue": {
+          "name": "voucher_expiry_after_issue",
+          "value": "\"voucher\".\"expires_at\" > \"voucher\".\"issued_at\""
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.voucher_offer": {
+      "name": "voucher_offer",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "partner_id": {
+          "name": "partner_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "category": {
+          "name": "category",
+          "type": "voucher_category",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "title": {
+          "name": "title",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "terms": {
+          "name": "terms",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "cost_coins": {
+          "name": "cost_coins",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "discount": {
+          "name": "discount",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "valid_for_days": {
+          "name": "valid_for_days",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "stock": {
+          "name": "stock",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "per_user_monthly_limit": {
+          "name": "per_user_monthly_limit",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 1
+        },
+        "available_from": {
+          "name": "available_from",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "available_until": {
+          "name": "available_until",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "active": {
+          "name": "active",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "voucher_offer_category_idx": {
+          "name": "voucher_offer_category_idx",
+          "columns": [
+            {
+              "expression": "category",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "active",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "voucher_offer_partner_id_voucher_partner_id_fk": {
+          "name": "voucher_offer_partner_id_voucher_partner_id_fk",
+          "tableFrom": "voucher_offer",
+          "tableTo": "voucher_partner",
+          "columnsFrom": [
+            "partner_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "voucher_offer_cost_positive": {
+          "name": "voucher_offer_cost_positive",
+          "value": "\"voucher_offer\".\"cost_coins\" > 0"
+        },
+        "voucher_offer_stock": {
+          "name": "voucher_offer_stock",
+          "value": "\"voucher_offer\".\"stock\" is null or \"voucher_offer\".\"stock\" >= 0"
+        },
+        "voucher_offer_validity": {
+          "name": "voucher_offer_validity",
+          "value": "\"voucher_offer\".\"valid_for_days\" between 1 and 180"
+        },
+        "voucher_offer_monthly_limit": {
+          "name": "voucher_offer_monthly_limit",
+          "value": "\"voucher_offer\".\"per_user_monthly_limit\" >= 1"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.voucher_partner": {
+      "name": "voucher_partner",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "category": {
+          "name": "category",
+          "type": "voucher_category",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "contact_email": {
+          "name": "contact_email",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "active": {
+          "name": "active",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
     }
   },
   "enums": {
-    "public.contest_type": {
-      "name": "contest_type",
+    "public.contest_format": {
+      "name": "contest_format",
       "schema": "public",
       "values": [
-        "public",
+        "head_to_head",
+        "small_league",
+        "mega",
         "private"
+      ]
+    },
+    "public.contest_status": {
+      "name": "contest_status",
+      "schema": "public",
+      "values": [
+        "open",
+        "locked",
+        "settled",
+        "cancelled"
       ]
     },
     "public.fixture_status": {
@@ -1525,6 +2413,20 @@
       "values": [
         "owner",
         "member"
+      ]
+    },
+    "public.ledger_kind": {
+      "name": "ledger_kind",
+      "schema": "public",
+      "values": [
+        "sign_up_bonus",
+        "promotion",
+        "reward",
+        "contest_entry",
+        "entry_refund",
+        "contest_settlement",
+        "voucher_redemption",
+        "voucher_refund"
       ]
     },
     "public.position": {
@@ -1546,6 +2448,14 @@
         "Tactician",
         "Master",
         "Grandmaster"
+      ]
+    },
+    "public.voucher_category": {
+      "name": "voucher_category",
+      "schema": "public",
+      "values": [
+        "shop",
+        "travel"
       ]
     }
   },

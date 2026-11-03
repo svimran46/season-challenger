@@ -1,5 +1,7 @@
 import { sql } from 'drizzle-orm';
 import {
+  bigint,
+  bigserial,
   boolean,
   check,
   date,
@@ -28,7 +30,29 @@ const createdAt = () => timestamp('created_at', { withTimezone: true }).notNull(
 
 export const positionEnum = pgEnum('position', ['GK', 'DEF', 'MID', 'FWD']);
 export const fixtureStatusEnum = pgEnum('fixture_status', ['scheduled', 'live', 'finished']);
-export const contestTypeEnum = pgEnum('contest_type', ['public', 'private']);
+export const contestFormatEnum = pgEnum('contest_format', [
+  'head_to_head',
+  'small_league',
+  'mega',
+  'private',
+]);
+export const contestStatusEnum = pgEnum('contest_status', [
+  'open',
+  'locked',
+  'settled',
+  'cancelled',
+]);
+export const ledgerKindEnum = pgEnum('ledger_kind', [
+  'sign_up_bonus',
+  'promotion',
+  'reward',
+  'contest_entry',
+  'entry_refund',
+  'contest_settlement',
+  'voucher_redemption',
+  'voucher_refund',
+]);
+export const voucherCategoryEnum = pgEnum('voucher_category', ['shop', 'travel']);
 export const tierEnum = pgEnum('tier', ['Scout', 'Analyst', 'Tactician', 'Master', 'Grandmaster']);
 export const leagueRoleEnum = pgEnum('league_role', ['owner', 'member']);
 
@@ -130,6 +154,14 @@ export const appUser = pgTable('app_user', {
   authId: text('auth_id').notNull().unique(),
   displayName: text('display_name').notNull(),
   favouriteClubId: text('favourite_club_id').references(() => club.id),
+  /** Self-declared at sign-up (18+ only); replaced by the ID document's date once verified. */
+  birthDate: date('birth_date'),
+  /** Set when the national ID or passport check passes. Required before redeeming vouchers. */
+  idVerifiedAt: timestamp('id_verified_at', { withTimezone: true }),
+  /** Keyed hash of the document number: one identity can verify only one account. */
+  idDocumentHash: text('id_document_hash').unique(),
+  /** Paused while an account is reviewed, e.g. for multi-accounting. */
+  redemptionsBlocked: boolean('redemptions_blocked').notNull().default(false),
   createdAt: createdAt(),
 });
 
@@ -173,6 +205,7 @@ export const squadPlayer = pgTable(
   (t) => [primaryKey({ columns: [t.squadId, t.playerId] })],
 );
 
+/** A tournament on one match. Terms are frozen when it is created; entries pay coins only. */
 export const contest = pgTable(
   'contest',
   {
@@ -181,28 +214,208 @@ export const contest = pgTable(
       .notNull()
       .references(() => fixture.id),
     name: text('name').notNull(),
-    type: contestTypeEnum('type').notNull().default('public'),
+    format: contestFormatEnum('format').notNull(),
+    status: contestStatusEnum('status').notNull().default('open'),
+    /** Private tournaments only. */
     inviteCode: text('invite_code').unique(),
-    capacity: integer('capacity'),
+    createdBy: uuid('created_by').references(() => appUser.id),
+    entryFee: integer('entry_fee').notNull(),
+    capacity: integer('capacity').notNull(),
+    minEntries: integer('min_entries').notNull(),
+    guaranteed: boolean('guaranteed').notNull().default(false),
+    platformFeeBps: integer('platform_fee_bps').notNull(),
+    maxBonusShareBps: integer('max_bonus_share_bps').notNull(),
+    /** PrizeTier[] from @season/wallet. */
+    prizeTable: jsonb('prize_table').notNull(),
+    entryCount: integer('entry_count').notNull().default(0),
     createdAt: createdAt(),
+    settledAt: timestamp('settled_at', { withTimezone: true }),
   },
-  (t) => [index('contest_fixture_idx').on(t.fixtureId)],
+  (t) => [
+    index('contest_fixture_idx').on(t.fixtureId, t.status),
+    check('contest_entry_fee_positive', sql`${t.entryFee} > 0`),
+    check(
+      'contest_sizes',
+      sql`${t.capacity} >= 2 and ${t.minEntries} between 2 and ${t.capacity} and ${t.entryCount} between 0 and ${t.capacity}`,
+    ),
+    check(
+      'contest_invite_code_private_only',
+      sql`(${t.format} = 'private') = (${t.inviteCode} is not null)`,
+    ),
+  ],
 );
 
 export const contestEntry = pgTable(
   'contest_entry',
   {
+    /** Also the ledger idempotency key (entry:<id>), so a retried join cannot pay twice. */
+    id: uuid('id').primaryKey().defaultRandom(),
     contestId: uuid('contest_id')
       .notNull()
-      .references(() => contest.id, { onDelete: 'cascade' }),
+      .references(() => contest.id),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => appUser.id),
     squadId: uuid('squad_id')
       .notNull()
       .references(() => squad.id),
+    entryTxnId: uuid('entry_txn_id')
+      .notNull()
+      .references(() => ledgerTransaction.id),
     points: real('points'),
     rank: integer('rank'),
+    prize: integer('prize'),
     joinedAt: createdAt(),
   },
-  (t) => [primaryKey({ columns: [t.contestId, t.squadId] })],
+  (t) => [
+    unique('contest_entry_user_uq').on(t.contestId, t.userId),
+    unique('contest_entry_squad_uq').on(t.contestId, t.squadId),
+    index('contest_entry_user_idx').on(t.userId, t.joinedAt),
+  ],
+);
+
+// ---------------------------------------------------------------- coin ledger
+
+/**
+ * Append-only, double-entry coin ledger. Coins never convert to or from money. Postings in a
+ * transaction sum to zero; ledger_balance caches each account's total and is locked
+ * (SELECT ... FOR UPDATE) while a transaction is checked and written.
+ */
+export const ledgerTransaction = pgTable('ledger_transaction', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  sequence: bigserial('sequence', { mode: 'number' }).notNull().unique(),
+  idempotencyKey: text('idempotency_key').notNull().unique(),
+  kind: ledgerKindEnum('kind').notNull(),
+  meta: jsonb('meta').notNull().default({}),
+  createdAt: createdAt(),
+});
+
+export const ledgerPosting = pgTable(
+  'ledger_posting',
+  {
+    transactionId: uuid('transaction_id')
+      .notNull()
+      .references(() => ledgerTransaction.id),
+    /** user:<id>:bonus, user:<id>:winnings, contest:<id>:pool or system:<name>. */
+    account: text('account').notNull(),
+    amount: bigint('amount', { mode: 'number' }).notNull(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.transactionId, t.account] }),
+    index('ledger_posting_account_idx').on(t.account),
+    check('ledger_posting_nonzero', sql`${t.amount} <> 0`),
+  ],
+);
+
+export const ledgerBalance = pgTable(
+  'ledger_balance',
+  {
+    account: text('account').primaryKey(),
+    balance: bigint('balance', { mode: 'number' }).notNull().default(0),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    check('ledger_balance_non_negative', sql`${t.balance} >= 0 or ${t.account} like 'system:%'`),
+  ],
+);
+
+/** One row per user per Dhaka calendar day; drives streaks for the daily reward. */
+export const dailyCheckIn = pgTable(
+  'daily_check_in',
+  {
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => appUser.id),
+    localDate: date('local_date').notNull(),
+    streak: integer('streak').notNull(),
+    rewardTxnId: uuid('reward_txn_id')
+      .notNull()
+      .references(() => ledgerTransaction.id),
+  },
+  (t) => [primaryKey({ columns: [t.userId, t.localDate] })],
+);
+
+// ---------------------------------------------------------------- vouchers
+
+export const voucherPartner = pgTable('voucher_partner', {
+  id: text('id').primaryKey(),
+  name: text('name').notNull(),
+  category: voucherCategoryEnum('category').notNull(),
+  contactEmail: text('contact_email'),
+  active: boolean('active').notNull().default(true),
+  createdAt: createdAt(),
+});
+
+/** A discount a partner offers for won coins. validateOffer() in @season/wallet runs on save. */
+export const voucherOffer = pgTable(
+  'voucher_offer',
+  {
+    id: text('id').primaryKey(),
+    partnerId: text('partner_id')
+      .notNull()
+      .references(() => voucherPartner.id),
+    category: voucherCategoryEnum('category').notNull(),
+    title: text('title').notNull(),
+    terms: text('terms').notNull(),
+    costCoins: integer('cost_coins').notNull(),
+    /** VoucherDiscount from @season/wallet. */
+    discount: jsonb('discount').notNull(),
+    validForDays: integer('valid_for_days').notNull(),
+    stock: integer('stock'),
+    perUserMonthlyLimit: integer('per_user_monthly_limit').notNull().default(1),
+    availableFrom: timestamp('available_from', { withTimezone: true }).notNull(),
+    availableUntil: timestamp('available_until', { withTimezone: true }),
+    active: boolean('active').notNull().default(true),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    index('voucher_offer_category_idx').on(t.category, t.active),
+    check('voucher_offer_cost_positive', sql`${t.costCoins} > 0`),
+    check('voucher_offer_stock', sql`${t.stock} is null or ${t.stock} >= 0`),
+    check('voucher_offer_validity', sql`${t.validForDays} between 1 and 180`),
+    check('voucher_offer_monthly_limit', sql`${t.perUserMonthlyLimit} >= 1`),
+  ],
+);
+
+/** An issued voucher, bound to the account that redeemed it. */
+export const voucher = pgTable(
+  'voucher',
+  {
+    /** The redemption id; the ledger key is voucher:<id>. */
+    id: uuid('id').primaryKey().defaultRandom(),
+    code: text('code').notNull().unique(),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => appUser.id),
+    offerId: text('offer_id')
+      .notNull()
+      .references(() => voucherOffer.id),
+    partnerId: text('partner_id')
+      .notNull()
+      .references(() => voucherPartner.id),
+    title: text('title').notNull(),
+    /** Snapshot of the offer's discount when issued. */
+    discount: jsonb('discount').notNull(),
+    costCoins: integer('cost_coins').notNull(),
+    issuedAt: timestamp('issued_at', { withTimezone: true }).notNull(),
+    expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+    usedAt: timestamp('used_at', { withTimezone: true }),
+    /** The partner's receipt or booking reference. */
+    usedReference: text('used_reference'),
+    cancelledAt: timestamp('cancelled_at', { withTimezone: true }),
+    redemptionTxnId: uuid('redemption_txn_id')
+      .notNull()
+      .references(() => ledgerTransaction.id),
+    refundTxnId: uuid('refund_txn_id').references(() => ledgerTransaction.id),
+  },
+  (t) => [
+    index('voucher_user_idx').on(t.userId, t.issuedAt),
+    check(
+      'voucher_used_or_cancelled',
+      sql`not (${t.usedAt} is not null and ${t.cancelledAt} is not null)`,
+    ),
+    check('voucher_expiry_after_issue', sql`${t.expiresAt} > ${t.issuedAt}`),
+  ],
 );
 
 // ---------------------------------------------------------------- Season Mastery

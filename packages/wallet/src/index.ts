@@ -6,3 +6,4 @@ export * from './wallet';
 export * from './contests';
 export * from './formats';
 export * from './vouchers';
+export * from './store';
