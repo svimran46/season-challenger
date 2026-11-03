@@ -1,0 +1,79 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  checks:
+    name: Format, typecheck, test, build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm format:check
+      - run: pnpm typecheck
+      - run: pnpm test
+      - run: pnpm --filter @season/api build
+
+  database:
+    name: Apply database migrations
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: season
+          POSTGRES_PASSWORD: season
+          POSTGRES_DB: season_challenger
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U season"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgres://season:season@localhost:5432/season_challenger
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Migrations match the schema
+        run: |
+          pnpm --filter @season/api db:generate --name ci-check
+          git diff --exit-code --stat -- apps/api/drizzle || (echo "Run pnpm --filter @season/api db:generate and commit the migration." && exit 1)
+          test -z "$(git status --porcelain -- apps/api/drizzle)" || (echo "Schema changed without a migration. Run pnpm --filter @season/api db:generate." && exit 1)
+      - run: pnpm --filter @season/api db:migrate
+
+  mobile:
+    name: Bundle the Expo app
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Export a web bundle
+        working-directory: apps/mobile
+        env:
+          CI: '1'
+          EXPO_OFFLINE: '1'
+        run: npx expo export --platform web --output-dir dist
