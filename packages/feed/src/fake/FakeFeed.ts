@@ -104,11 +104,22 @@ const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
 
 export interface FakeFeedOptions {
   seed?: number;
-  /** First kickoff, ISO. Later gameweeks are one week apart. */
+  /** First kickoff, ISO. Later gameweeks are one week apart. Defaults to five weeks before now. */
   seasonStart?: string;
   gameweeks?: number;
   /** Clock used to decide fixture status. Inject a fixed time in tests. */
   now?: () => Date;
+}
+
+/**
+ * By default the fake season starts on the Saturday five weeks before "now", so local
+ * development always has finished, live-ish and upcoming gameweeks to work with.
+ */
+export function defaultSeasonStart(now: Date): string {
+  const d = new Date(now.getTime() - 5 * WEEK_MS);
+  d.setUTCDate(d.getUTCDate() - ((d.getUTCDay() + 1) % 7));
+  d.setUTCHours(14, 0, 0, 0);
+  return d.toISOString();
 }
 
 /**
@@ -127,7 +138,7 @@ export class FakeFeed implements FootballFeed {
   constructor(options: FakeFeedOptions = {}) {
     this.seed = options.seed ?? 2026;
     this.now = options.now ?? (() => new Date());
-    const start = options.seasonStart ?? '2026-08-15T14:00:00.000Z';
+    const start = options.seasonStart ?? defaultSeasonStart(this.now());
     const gameweeks = options.gameweeks ?? (CLUBS.length - 1) * 2;
     const random = createRandom(this.seed);
 

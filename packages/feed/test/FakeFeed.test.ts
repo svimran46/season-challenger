@@ -1,11 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { DEFAULT_SQUAD_RULES, scorePlayer } from '@season/shared';
-import { FakeFeed } from '../src';
+import { FakeFeed, defaultSeasonStart } from '../src';
 
 const at = (iso: string) => () => new Date(iso);
+const seasonStart = '2026-08-15T14:00:00.000Z';
 
 describe('FakeFeed', () => {
-  const feed = new FakeFeed({ now: at('2026-09-01T00:00:00Z') });
+  const feed = new FakeFeed({ seasonStart, now: at('2026-09-01T00:00:00Z') });
 
   it('generates 8 clubs with 18 players each', async () => {
     const clubs = await feed.listClubs();
@@ -27,10 +28,10 @@ describe('FakeFeed', () => {
   });
 
   it('is deterministic for a seed', async () => {
-    const again = new FakeFeed({ now: at('2026-09-01T00:00:00Z') });
+    const again = new FakeFeed({ seasonStart, now: at('2026-09-01T00:00:00Z') });
     expect(await again.listPlayers()).toEqual(await feed.listPlayers());
     expect(await again.getStats('fx-1-1')).toEqual(await feed.getStats('fx-1-1'));
-    const other = new FakeFeed({ seed: 7 });
+    const other = new FakeFeed({ seasonStart, seed: 7 });
     expect(await other.listPlayers()).not.toEqual(await feed.listPlayers());
   });
 
@@ -47,8 +48,13 @@ describe('FakeFeed', () => {
     expect(new Set(pairs).size).toBe(56);
   });
 
+  it('starts the default season on a Saturday five weeks before now', () => {
+    expect(defaultSeasonStart(new Date('2026-11-03T18:00:00Z'))).toBe('2026-09-26T14:00:00.000Z');
+    expect(defaultSeasonStart(new Date('2026-11-07T10:00:00Z'))).toBe('2026-10-03T14:00:00.000Z');
+  });
+
   it('derives status from the clock', async () => {
-    const live = new FakeFeed({ now: at('2026-08-15T14:30:00Z') });
+    const live = new FakeFeed({ seasonStart, now: at('2026-08-15T14:30:00Z') });
     expect((await live.getFixture('fx-1-1'))?.status).toBe('live');
     expect((await live.getFixture('fx-2-1'))?.status).toBe('scheduled');
     expect(await live.getStats('fx-1-1')).toBeUndefined();

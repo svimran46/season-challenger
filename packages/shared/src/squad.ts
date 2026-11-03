@@ -29,7 +29,8 @@ export type SquadErrorCode =
   | 'position_count'
   | 'captain_not_in_squad'
   | 'vice_captain_not_in_squad'
-  | 'captain_is_vice_captain';
+  | 'captain_is_vice_captain'
+  | 'fixture_locked';
 
 export interface SquadError {
   code: SquadErrorCode;

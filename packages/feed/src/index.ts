@@ -1,2 +1,2 @@
 export * from './FootballFeed';
-export { FakeFeed, type FakeFeedOptions } from './fake/FakeFeed';
+export { FakeFeed, defaultSeasonStart, type FakeFeedOptions } from './fake/FakeFeed';
