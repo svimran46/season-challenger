@@ -1,0 +1,12 @@
+{
+  "name": "@season/shared",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Domain types and pure game rules shared by the app, API and worker.",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "vitest run"
+  }
+}

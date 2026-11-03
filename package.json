@@ -1,0 +1,22 @@
+{
+  "name": "season-challenger",
+  "private": true,
+  "packageManager": "pnpm@10.28.0",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "typecheck": "pnpm -r typecheck",
+    "test": "pnpm -r test",
+    "build": "pnpm -r build",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "dev:api": "pnpm --filter @season/api dev",
+    "dev:mobile": "pnpm --filter @season/mobile start"
+  },
+  "devDependencies": {
+    "prettier": "^3.9.10",
+    "typescript": "~5.9.3",
+    "vitest": "^3.2.7"
+  }
+}
