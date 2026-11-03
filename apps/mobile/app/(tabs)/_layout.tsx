@@ -22,7 +22,8 @@ export default function TabsLayout() {
     >
       <Tabs.Screen name="index" options={{ title: 'Matches', tabBarIcon: icon('⚽') }} />
       <Tabs.Screen name="mastery" options={{ title: 'Mastery', tabBarIcon: icon('◎') }} />
-      <Tabs.Screen name="leagues" options={{ title: 'Leagues', tabBarIcon: icon('☰') }} />
+      <Tabs.Screen name="leagues" options={{ title: 'Tournaments', tabBarIcon: icon('☰') }} />
+      <Tabs.Screen name="wallet" options={{ title: 'Wallet', tabBarIcon: icon('◈') }} />
       <Tabs.Screen name="profile" options={{ title: 'Profile', tabBarIcon: icon('●') }} />
     </Tabs>
   );

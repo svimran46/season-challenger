@@ -21,6 +21,8 @@ export default function RootLayout() {
       >
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
         <Stack.Screen name="fixture/[id]" options={{ title: 'Match' }} />
+        <Stack.Screen name="squad/[contestId]" options={{ title: 'Pick your squad' }} />
+        <Stack.Screen name="verify" options={{ title: 'Verify your ID', presentation: 'modal' }} />
       </Stack>
     </QueryClientProvider>
   );

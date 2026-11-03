@@ -185,17 +185,34 @@ export class ContestsService {
   async myEntries(userId: string) {
     await this.wallet.ensurePlayer(userId);
     await this.refresh();
-    return [...this.stores.entries.values()]
+    const mine = [...this.stores.entries.values()]
       .filter((e) => e.userId === userId)
-      .sort((a, b) => b.joinedAt.localeCompare(a.joinedAt))
-      .map((e) => ({
+      .sort((a, b) => b.joinedAt.localeCompare(a.joinedAt));
+    const clubs = new Map((await this.feed.listClubs()).map((c) => [c.id, c]));
+    const fixtures = new Map<string, Awaited<ReturnType<FootballFeed['getFixture']>>>();
+    for (const e of mine) {
+      if (!fixtures.has(e.squad.fixtureId)) {
+        fixtures.set(e.squad.fixtureId, await this.feed.getFixture(e.squad.fixtureId));
+      }
+    }
+    return mine.map((e) => {
+      const f = fixtures.get(e.squad.fixtureId);
+      return {
         entryId: e.id,
         points: e.points,
         rank: e.rank,
         prize: e.prize,
         joinedAt: e.joinedAt,
+        fixture: f && {
+          id: f.id,
+          kickoffAt: f.kickoffAt,
+          status: f.status,
+          home: clubs.get(f.homeClubId)?.shortName ?? f.homeClubId,
+          away: clubs.get(f.awayClubId)?.shortName ?? f.awayClubId,
+        },
         contest: this.summary(this.find(e.contestId), userId),
-      }));
+      };
+    });
   }
 
   /**

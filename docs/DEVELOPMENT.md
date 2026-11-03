@@ -25,6 +25,9 @@ pnpm dev:api         # API on http://localhost:3000
 pnpm dev:mobile      # Expo dev server; press w for web, or scan the QR code with Expo Go
 ```
 
+The app signs in as `EXPO_PUBLIC_DEV_PLAYER_ID` (default `dev-player`) until phone sign-in is
+built; give each test phone its own id to play against each other.
+
 On a physical phone, set `EXPO_PUBLIC_API_URL` to your computer's LAN address, for example
 `http://192.168.1.20:3000`, because `localhost` on the phone is the phone itself.
 

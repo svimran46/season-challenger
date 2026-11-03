@@ -25,3 +25,20 @@ export function countdown(iso: string, now = Date.now()): string {
 export function formatPoints(points: number): string {
   return `${points} ${points === 1 ? 'pt' : 'pts'}`;
 }
+
+/** "1,250 coins", "1 coin". */
+export function formatCoins(coins: number): string {
+  return `${coins.toLocaleString('en-US')} ${coins === 1 ? 'coin' : 'coins'}`;
+}
+
+/** "1st", "2nd", "3rd", "11th", "22nd". */
+export function ordinal(n: number): string {
+  const tens = n % 100;
+  if (tens >= 11 && tens <= 13) return `${n}th`;
+  return `${n}${({ 1: 'st', 2: 'nd', 3: 'rd' } as Record<number, string>)[n % 10] ?? 'th'}`;
+}
+
+/** "5 Oct" in the device's locale. */
+export function formatDay(iso: string): string {
+  return new Date(iso).toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
+}

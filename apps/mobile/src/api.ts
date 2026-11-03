@@ -10,6 +10,23 @@ import type {
 
 const BASE_URL = process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:3000';
 
+/**
+ * Stand-in player id until phone sign-in is built. The development API accepts it as the
+ * signed-in player; production refuses it.
+ */
+export const PLAYER_ID = process.env.EXPO_PUBLIC_DEV_PLAYER_ID ?? 'dev-player';
+
+/** A failed request, with the API's error code (e.g. insufficient_funds) when it sent one. */
+export class ApiError extends Error {
+  constructor(
+    readonly status: number,
+    readonly code: string | undefined,
+    message: string,
+  ) {
+    super(message);
+  }
+}
+
 export interface FixtureSummary extends Fixture {
   home: Club;
   away: Club;
@@ -24,10 +41,124 @@ export interface FixtureDetail extends FixtureSummary {
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`${BASE_URL}${path}`, {
     ...init,
-    headers: { 'Content-Type': 'application/json', ...init?.headers },
+    headers: { 'Content-Type': 'application/json', 'x-user-id': PLAYER_ID, ...init?.headers },
   });
-  if (!res.ok) throw new Error(`${init?.method ?? 'GET'} ${path} failed with ${res.status}`);
+  if (!res.ok) {
+    const body = (await res.json().catch(() => ({}))) as { error?: unknown; message?: unknown };
+    const message =
+      typeof body.message === 'string'
+        ? body.message
+        : `${init?.method ?? 'GET'} ${path} failed with ${res.status}`;
+    throw new ApiError(
+      res.status,
+      typeof body.error === 'string' ? body.error : undefined,
+      message,
+    );
+  }
   return (await res.json()) as T;
+}
+
+const post = (body?: unknown): RequestInit => ({
+  method: 'POST',
+  body: body === undefined ? undefined : JSON.stringify(body),
+});
+
+export interface Wallet {
+  bonus: number;
+  winnings: number;
+  total: number;
+  redeemable: number;
+  checkIn: { today: string; checkedIn: boolean; streak: number; nextReward: number };
+  verified: boolean;
+}
+
+export interface WalletActivity {
+  id: string;
+  kind:
+    | 'sign_up_bonus'
+    | 'promotion'
+    | 'reward'
+    | 'contest_entry'
+    | 'entry_refund'
+    | 'contest_settlement'
+    | 'voucher_redemption'
+    | 'voucher_refund';
+  createdAt: string;
+  bonus: number;
+  winnings: number;
+  meta: Record<string, string | number>;
+}
+
+export type ContestFormat = 'head_to_head' | 'small_league' | 'mega' | 'private';
+
+export interface Contest {
+  id: string;
+  fixtureId: string;
+  name: string;
+  format: ContestFormat;
+  formatLabel: string;
+  status: 'open' | 'locked' | 'settled' | 'cancelled';
+  entryFee: number;
+  capacity: number;
+  entries: number;
+  spotsLeft: number;
+  minEntries: number;
+  guaranteed: boolean;
+  prizeTable: { fromRank: number; toRank: number; amount: number }[];
+  topPrize: number;
+  inviteCode: string | null;
+}
+
+export interface MyEntry {
+  entryId: string;
+  points: number | null;
+  rank: number | null;
+  prize: number | null;
+  joinedAt: string;
+  fixture?: {
+    id: string;
+    kickoffAt: string;
+    status: 'scheduled' | 'live' | 'finished';
+    home: string;
+    away: string;
+  };
+  contest: Contest;
+}
+
+export interface VoucherOffer {
+  id: string;
+  partnerName: string;
+  category: 'shop' | 'travel';
+  title: string;
+  discountText: string;
+  terms: string;
+  costCoins: number;
+  validForDays: number;
+  stockLeft: number | null;
+  canRedeem?: boolean;
+  reason?: string | null;
+}
+
+export interface MyVoucher {
+  id: string;
+  code: string;
+  partnerName: string;
+  category: 'shop' | 'travel';
+  title: string;
+  discountText: string;
+  costCoins: number;
+  issuedAt: string;
+  expiresAt: string;
+  status: 'active' | 'used' | 'expired' | 'cancelled';
+}
+
+/** A random id for a redemption, so a retried tap never charges twice. */
+export function requestId(): string {
+  const hex = Array.from({ length: 32 }, () => Math.floor(Math.random() * 16).toString(16));
+  hex[12] = '4';
+  hex[16] = ((parseInt(hex[16]!, 16) & 0x3) | 0x8).toString(16);
+  const h = hex.join('');
+  return `${h.slice(0, 8)}-${h.slice(8, 12)}-${h.slice(12, 16)}-${h.slice(16, 20)}-${h.slice(20)}`;
 }
 
 export const api = {
@@ -43,4 +174,34 @@ export const api = {
       method: 'POST',
       body: JSON.stringify(squad),
     }),
+
+  wallet: () => request<Wallet>('/v1/me/wallet'),
+  activity: (limit = 20) => request<WalletActivity[]>(`/v1/me/wallet/activity?limit=${limit}`),
+  checkIn: () =>
+    request<{ today: string; streak: number; coins: number; alreadyCheckedIn: boolean }>(
+      '/v1/me/check-in',
+      post(),
+    ),
+  verify: (birthDate: string, documentNumber: string) =>
+    request<{ verified: true }>('/v1/me/verification', post({ birthDate, documentNumber })),
+
+  contests: (fixtureId: string) =>
+    request<Contest[]>(`/v1/contests?fixtureId=${encodeURIComponent(fixtureId)}`),
+  contest: (id: string) => request<Contest>(`/v1/contests/${encodeURIComponent(id)}`),
+  contestByInvite: (code: string) =>
+    request<Contest>(`/v1/contests/invite/${encodeURIComponent(code.trim())}`),
+  createPrivate: (input: { fixtureId: string; name: string; entryFee: number; capacity: number }) =>
+    request<Contest>('/v1/contests', post(input)),
+  join: (contestId: string, squad: Omit<SquadPick, 'fixtureId'>) =>
+    request<{ entryId: string; contest: Contest }>(
+      `/v1/contests/${encodeURIComponent(contestId)}/entries`,
+      post(squad),
+    ),
+  myEntries: () => request<MyEntry[]>('/v1/me/entries'),
+
+  offers: (category?: 'shop' | 'travel') =>
+    request<VoucherOffer[]>(`/v1/vouchers/offers${category ? `?category=${category}` : ''}`),
+  redeem: (offerId: string, id: string) =>
+    request<MyVoucher>('/v1/vouchers/redeem', post({ offerId, requestId: id })),
+  myVouchers: () => request<MyVoucher[]>('/v1/me/vouchers'),
 };

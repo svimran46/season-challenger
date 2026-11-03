@@ -1,11 +1,11 @@
 import type { Player, Position } from '@season/shared';
 import { useQuery } from '@tanstack/react-query';
-import { Stack, useLocalSearchParams } from 'expo-router';
+import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { SectionList, StyleSheet, Text, View } from 'react-native';
-import { api } from '../../src/api';
-import { countdown, formatKickoff, formatPoints } from '../../src/format';
+import { api, type Contest } from '../../src/api';
+import { countdown, formatCoins, formatKickoff, formatPoints } from '../../src/format';
 import { useTheme } from '../../src/theme';
-import { Card, Chip, Loading, Message, Screen } from '../../src/ui';
+import { Button, Card, Chip, Loading, Message, Screen, SectionTitle } from '../../src/ui';
 
 const ORDER: Position[] = ['GK', 'DEF', 'MID', 'FWD'];
 const POSITION_NAMES: Record<Position, string> = {
@@ -25,6 +25,18 @@ export default function FixtureScreen() {
     queryFn: () => api.points(id),
     enabled: finished,
   });
+  const scheduled = fixture.data?.status === 'scheduled';
+  const contests = useQuery({
+    queryKey: ['contests', id],
+    queryFn: () => api.contests(id),
+    enabled: scheduled,
+  });
+  const entries = useQuery({
+    queryKey: ['my-entries'],
+    queryFn: api.myEntries,
+    enabled: scheduled,
+  });
+  const joined = new Set(entries.data?.map((e) => e.contest.id));
 
   if (fixture.isError) return <Message title="Couldn't load this match" />;
   if (!fixture.data) return <Loading />;
@@ -58,11 +70,16 @@ export default function FixtureScreen() {
                 {formatKickoff(f.kickoffAt)}
                 {f.status === 'scheduled' ? ` · locks in ${countdown(f.kickoffAt)}` : ''}
               </Text>
-              <View style={styles.games}>
-                <Chip label="Fantasy squad: Phase 3" tone="muted" />
-                <Chip label="Analysis card: Phase 4" tone="muted" />
-              </View>
             </Card>
+            {scheduled && contests.data ? (
+              <>
+                <SectionTitle>Tournaments</SectionTitle>
+                {contests.data.map((c) => (
+                  <ContestCard key={c.id} contest={c} joined={joined.has(c.id)} />
+                ))}
+                <SectionTitle>Players</SectionTitle>
+              </>
+            ) : null}
           </View>
         }
         renderSectionHeader={({ section }) => (
@@ -86,10 +103,51 @@ export default function FixtureScreen() {
   );
 }
 
+function ContestCard({ contest: c, joined }: { contest: Contest; joined: boolean }) {
+  const t = useTheme();
+  const router = useRouter();
+  const paid = c.prizeTable.at(-1)?.toRank ?? 1;
+  return (
+    <Card>
+      <View style={styles.contestTop}>
+        <View style={{ flexShrink: 1 }}>
+          <Text style={[styles.contestName, { color: t.text }]}>{c.name}</Text>
+          <Text style={{ color: t.muted, marginTop: 2 }}>
+            Top prize {formatCoins(c.topPrize)} ·{' '}
+            {paid === 1 ? 'winner takes all' : `top ${paid} win`}
+          </Text>
+        </View>
+        {c.guaranteed ? <Chip label="Guaranteed" tone="done" /> : null}
+      </View>
+      <View style={[styles.contestTop, { marginTop: 12 }]}>
+        <Text style={{ color: t.muted }}>
+          {c.entries} of {c.capacity.toLocaleString('en-US')} joined
+        </Text>
+        {joined ? (
+          <Chip label="Joined" tone="done" />
+        ) : (
+          <Button
+            label={`Join · ${c.entryFee}`}
+            onPress={() =>
+              router.push({ pathname: '/squad/[contestId]', params: { contestId: c.id } })
+            }
+          />
+        )}
+      </View>
+    </Card>
+  );
+}
+
 const styles = StyleSheet.create({
   header: { paddingTop: 16 },
+  contestTop: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  contestName: { fontSize: 16, fontWeight: '700' },
   title: { fontSize: 18, fontWeight: '700' },
-  games: { flexDirection: 'row', gap: 8, marginTop: 12, flexWrap: 'wrap' },
   section: {
     fontSize: 13,
     fontWeight: '600',
