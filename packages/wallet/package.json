@@ -1,0 +1,15 @@
+{
+  "name": "@season/wallet",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Coin ledger, wallet balances and rewards, tournament categories, prize tables and settlement, and voucher redemption. No money in or out.",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@season/shared": "workspace:*"
+  }
+}

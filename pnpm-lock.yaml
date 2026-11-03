@@ -133,6 +133,12 @@ importers:
 
   packages/shared: {}
 
+  packages/wallet:
+    dependencies:
+      '@season/shared':
+        specifier: workspace:*
+        version: link:../shared
+
 packages:
 
   2g@1.0.1:
