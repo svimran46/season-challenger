@@ -1,0 +1,92 @@
+import type { VoucherOffer } from '@season/wallet';
+
+/**
+ * Placeholder offers for development and demos. Partner names are invented and marked "Demo";
+ * real partners and their offers are entered once agreements are signed.
+ */
+const base = {
+  stock: null,
+  perUserMonthlyLimit: 2,
+  availableFrom: '2026-01-01T00:00:00Z',
+  availableUntil: null,
+  active: true,
+} as const;
+
+export const DEMO_OFFERS: VoucherOffer[] = [
+  {
+    ...base,
+    id: 'demo-cafe-15',
+    partnerId: 'demo-cafe',
+    partnerName: 'Demo Café',
+    category: 'shop',
+    title: '15% off your bill',
+    terms: 'Dine-in or takeaway. One voucher per bill. Not valid with other offers.',
+    costCoins: 200,
+    discount: { kind: 'percent', percent: 15, maxDiscountBdt: 300, minSpendBdt: 0 },
+    validForDays: 30,
+  },
+  {
+    ...base,
+    id: 'demo-books-200',
+    partnerId: 'demo-books',
+    partnerName: 'Demo Bookshop',
+    category: 'shop',
+    title: '৳200 off books',
+    terms: 'On a bill of ৳800 or more. Excludes textbooks.',
+    costCoins: 250,
+    discount: { kind: 'amount', amountBdt: 200, minSpendBdt: 800 },
+    validForDays: 60,
+  },
+  {
+    ...base,
+    id: 'demo-fashion-20',
+    partnerId: 'demo-fashion',
+    partnerName: 'Demo Fashion House',
+    category: 'shop',
+    title: '20% off clothing',
+    terms: 'In store, on full-price items, on a bill of ৳2,000 or more.',
+    costCoins: 600,
+    discount: { kind: 'percent', percent: 20, maxDiscountBdt: 1000, minSpendBdt: 2000 },
+    validForDays: 45,
+    stock: 100,
+  },
+  {
+    ...base,
+    id: 'demo-bus-10',
+    partnerId: 'demo-bus',
+    partnerName: 'Demo Bus Lines',
+    category: 'travel',
+    title: '10% off an intercity ticket',
+    terms: 'Booked through the partner counter or app, in the voucher holder’s name.',
+    costCoins: 300,
+    discount: { kind: 'percent', percent: 10, maxDiscountBdt: 300, minSpendBdt: 0 },
+    validForDays: 60,
+  },
+  {
+    ...base,
+    id: 'demo-resort-25',
+    partnerId: 'demo-resort',
+    partnerName: 'Demo Beach Resort, Cox’s Bazar',
+    category: 'travel',
+    title: '25% off a room booking',
+    terms: 'Sunday to Thursday nights, subject to availability, booking of ৳6,000 or more.',
+    costCoins: 1500,
+    discount: { kind: 'percent', percent: 25, maxDiscountBdt: 3000, minSpendBdt: 6000 },
+    validForDays: 90,
+    stock: 40,
+  },
+  {
+    ...base,
+    id: 'demo-air-1000',
+    partnerId: 'demo-air',
+    partnerName: 'Demo Air',
+    category: 'travel',
+    title: '৳1,000 off a domestic flight',
+    terms: 'One-way or return fares of ৳5,000 or more, in the voucher holder’s name.',
+    costCoins: 1200,
+    discount: { kind: 'amount', amountBdt: 1000, minSpendBdt: 5000 },
+    validForDays: 90,
+    stock: 25,
+    perUserMonthlyLimit: 1,
+  },
+];

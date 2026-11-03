@@ -12,6 +12,12 @@ A fantasy football app in the spirit of Dream11, with one extra category: **Seas
 Phase 1 (foundation) is in place: a TypeScript monorepo with the shared game rules, an offline
 fake football feed, a NestJS API, the Expo app shell and the Postgres schema.
 
+The coin economy is built in `packages/wallet` and served by the API. **No money goes in or out:**
+players get 500 bonus coins at sign-up plus daily and Season Mastery rewards, spend coins on
+tournaments (head-to-head, small league, mega, private), and redeem coins they _won_ for shop and
+travel discount vouchers. Vouchers are discounts only, tied to an ID-verified 18+ account, and
+never convert back to taka.
+
 | Layer         | Choice                                                                        |
 | ------------- | ----------------------------------------------------------------------------- |
 | Mobile        | Expo (React Native) with Expo Router                                          |
