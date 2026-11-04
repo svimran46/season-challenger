@@ -37,6 +37,10 @@ On a physical phone, set `EXPO_PUBLIC_API_URL` to your computer's LAN address, f
 fixtures and match stats on every machine. Its season starts five weeks before today, so there are
 always finished fixtures with points and upcoming fixtures with open deadlines.
 
+With `DATABASE_URL` set, the API reads football data from Postgres and a worker inside the API
+syncs it from the provider every `WORKER_SECONDS`. Only the sync calls the provider. Stats
+snapshots are append-only by version, and an advisory lock lets one instance write at a time.
+
 ## API
 
 | Method | Path                             | Notes                                             |
