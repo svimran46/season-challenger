@@ -1,7 +1,13 @@
 import { Canvas, RoundedRect, Shader, type SkRuntimeEffect } from '@shopify/react-native-skia';
 import { useFocusEffect } from 'expo-router';
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from 'react';
-import { StyleSheet, View, type GestureResponderEvent, type ViewStyle } from 'react-native';
+import {
+  StyleSheet,
+  View,
+  type GestureResponderEvent,
+  type StyleProp,
+  type ViewStyle,
+} from 'react-native';
 import {
   useDerivedValue,
   useFrameCallback,
@@ -40,7 +46,7 @@ export function ShaderView({
   radius?: number;
   /** Starting time, so cards using the same shader don't move in step. */
   seed?: number;
-  style?: ViewStyle;
+  style?: StyleProp<ViewStyle>;
   children?: ReactNode;
 }) {
   const [size, setSize] = useState({ width: 0, height: 0 });
