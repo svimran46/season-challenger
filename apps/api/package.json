@@ -4,9 +4,9 @@
   "private": true,
   "description": "Season Challenger REST API.",
   "scripts": {
-    "dev": "tsx watch src/main.ts",
+    "dev": "tsx watch --env-file-if-exists=../../.env src/main.ts",
     "build": "tsup",
-    "start": "node dist/main.js",
+    "start": "node --env-file-if-exists=../../.env dist/main.js",
     "typecheck": "tsc -p tsconfig.json",
     "test": "vitest run",
     "db:generate": "drizzle-kit generate",

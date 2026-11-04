@@ -1,10 +1,17 @@
 import { createApp } from './app';
+import { loadConfig } from './config';
+import { createDatabase } from './db/client';
 
 async function main() {
-  const app = await createApp();
-  const port = Number(process.env.PORT ?? 3000);
-  await app.listen(port);
-  console.log(`Season Challenger API listening on http://localhost:${port}`);
+  const config = loadConfig();
+  const database = config.databaseUrl ? createDatabase(config.databaseUrl) : undefined;
+  const app = await createApp({ database, workerSeconds: config.workerSeconds });
+  await app.listen(config.port);
+  console.log(
+    `Season Challenger API listening on http://localhost:${config.port} (${
+      database ? 'Postgres' : 'in memory'
+    })`,
+  );
 }
 
 main().catch((error) => {

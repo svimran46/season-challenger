@@ -13,7 +13,7 @@ Season Challenger is a pnpm monorepo in TypeScript.
 ## Requirements
 
 - Node 22 (see `.nvmrc`) and pnpm 10 (`corepack enable` picks the pinned version)
-- Docker, for Postgres and Redis (only needed once the API uses the database)
+- Docker, for Postgres (optional: without `DATABASE_URL` the API keeps everything in memory)
 
 ## First run
 

@@ -6,5 +6,8 @@ export const FOOTBALL_FEED = Symbol('FOOTBALL_FEED');
 export const CLOCK = Symbol('CLOCK');
 export const LEDGER_STORE = Symbol('LEDGER_STORE');
 export const ECONOMY_STORES = Symbol('ECONOMY_STORES');
+export const DATABASE = Symbol('DATABASE');
+export const FEED_SYNC = Symbol('FEED_SYNC');
+export const WORKER_SECONDS = Symbol('WORKER_SECONDS');
 
 export type Clock = () => Date;
