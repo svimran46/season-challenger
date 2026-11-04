@@ -10,10 +10,25 @@ const verifyBody = z.object({
   code: z.string().regex(/^\d{6}$/, 'The code is six digits.'),
 });
 
-/** Phone number + one-time code sign-in. */
+const googleBody = z.object({ idToken: z.string().min(20).max(4096) });
+
+/** Sign-in: Google, or phone number + one-time code. */
 @Controller('auth')
 export class AuthController {
   constructor(@Inject(AuthService) private readonly auth: AuthService) {}
+
+  /** Which sign-in methods the app should offer. */
+  @Get('methods')
+  methods() {
+    return this.auth.methods();
+  }
+
+  /** Swaps a Google ID token for a session token. */
+  @Post('google')
+  @HttpCode(200)
+  google(@Body(new ZodPipe(googleBody)) body: z.infer<typeof googleBody>) {
+    return this.auth.signInWithGoogle(body.idToken);
+  }
 
   /** Texts a sign-in code. Works for new and returning players alike. */
   @Post('code')

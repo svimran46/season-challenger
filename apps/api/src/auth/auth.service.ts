@@ -2,12 +2,14 @@ import { HttpException, HttpStatus, Inject, Injectable } from '@nestjs/common';
 import { createHash, createHmac, randomBytes, randomInt, timingSafeEqual } from 'node:crypto';
 import { CLOCK, type Clock } from '../common/tokens';
 import type { AuthStore } from './auth.store';
+import type { GoogleVerifier } from './google';
 import { maskPhone, normalizeBdPhone } from './phone';
 import type { SmsSender } from './sms';
 
 export const AUTH_STORE = Symbol('AUTH_STORE');
 export const SMS_SENDER = Symbol('SMS_SENDER');
 export const AUTH_SETTINGS = Symbol('AUTH_SETTINGS');
+export const GOOGLE_VERIFIER = Symbol('GOOGLE_VERIFIER');
 
 export interface AuthSettings {
   /** Key for hashing sign-in codes. Long and random outside development. */
@@ -24,6 +26,8 @@ export interface AuthSettings {
   maxAttempts: number;
   /** How long a sign-in lasts on a device. */
   sessionDays: number;
+  /** Off when no SMS provider can deliver codes (production without one). */
+  phoneEnabled: boolean;
 }
 
 export const DEFAULT_AUTH_SETTINGS: AuthSettings = {
@@ -34,6 +38,7 @@ export const DEFAULT_AUTH_SETTINGS: AuthSettings = {
   codesPerAddressPerHour: 20,
   maxAttempts: 5,
   sessionDays: 90,
+  phoneEnabled: true,
 };
 
 export type AuthErrorCode =
@@ -43,7 +48,10 @@ export type AuthErrorCode =
   | 'wrong_code'
   | 'code_expired'
   | 'too_many_attempts'
-  | 'signed_out';
+  | 'signed_out'
+  | 'phone_unavailable'
+  | 'google_rejected'
+  | 'google_unavailable';
 
 const STATUS: Record<AuthErrorCode, HttpStatus> = {
   invalid_phone: HttpStatus.BAD_REQUEST,
@@ -53,6 +61,9 @@ const STATUS: Record<AuthErrorCode, HttpStatus> = {
   code_expired: HttpStatus.GONE,
   too_many_attempts: HttpStatus.TOO_MANY_REQUESTS,
   signed_out: HttpStatus.UNAUTHORIZED,
+  phone_unavailable: HttpStatus.SERVICE_UNAVAILABLE,
+  google_rejected: HttpStatus.UNAUTHORIZED,
+  google_unavailable: HttpStatus.SERVICE_UNAVAILABLE,
 };
 
 /** A sign-in failure the app can act on: { statusCode, error: code, message, ...extra }. */
@@ -68,6 +79,7 @@ export class AuthError extends HttpException {
 
 const HOUR = 60 * 60 * 1000;
 const sha256 = (value: string) => createHash('sha256').update(value).digest('hex');
+const newUserId = () => `u_${randomBytes(12).toString('base64url')}`;
 const seconds = (ms: number) => Math.max(1, Math.ceil(ms / 1000));
 
 /**
@@ -85,7 +97,16 @@ export class AuthService {
     @Inject(SMS_SENDER) private readonly sms: SmsSender,
     @Inject(AUTH_SETTINGS) private readonly settings: AuthSettings,
     @Inject(CLOCK) private readonly clock: Clock,
+    @Inject(GOOGLE_VERIFIER) private readonly google: GoogleVerifier | null,
   ) {}
+
+  /** Which sign-in methods this server offers, so the app shows only those. */
+  methods() {
+    return {
+      phone: this.settings.phoneEnabled,
+      google: this.google ? { webClientId: this.google.webClientId } : null,
+    };
+  }
 
   get smsProvider(): string {
     return this.sms.name;
@@ -120,6 +141,9 @@ export class AuthService {
 
   /** Texts a new code to the number, within the resend and hourly limits. */
   async requestCode(input: string, address?: string) {
+    if (!this.settings.phoneEnabled) {
+      throw new AuthError('phone_unavailable', 'Phone sign-in is not available. Use Google.');
+    }
     const phone = this.phoneOrThrow(input);
     const now = this.clock();
     const recent = await this.store.recentChallenges(phone, new Date(now.getTime() - HOUR));
@@ -199,25 +223,63 @@ export class AuthService {
       throw new AuthError('code_expired', 'That code was already used. Ask for a new one.');
     }
 
-    const candidate = `u_${randomBytes(12).toString('base64url')}`;
+    const candidate = newUserId();
     const identity =
       (await this.store.findIdentity(phone)) ??
       (await this.store.createIdentity({ phone, userId: candidate, createdAt: now }));
 
+    const session = await this.startSession(identity.userId, now);
+    return {
+      ...session,
+      user: { id: identity.userId, phone, email: null, isNew: identity.userId === candidate },
+    };
+  }
+
+  /** Signs in with a Google ID token; the first sign-in creates the player. */
+  async signInWithGoogle(idToken: string) {
+    if (!this.google) {
+      throw new AuthError('google_unavailable', 'Google sign-in is not set up on this server.');
+    }
+    let profile;
+    try {
+      profile = await this.google.verify(idToken);
+    } catch {
+      throw new AuthError('google_rejected', 'Google sign-in failed. Try again.');
+    }
+    const email = profile.emailVerified ? profile.email : null;
+    const now = this.clock();
+    const candidate = newUserId();
+    const existing = await this.store.findExternalIdentity('google', profile.subject);
+    const identity =
+      existing ??
+      (await this.store.createExternalIdentity({
+        provider: 'google',
+        subject: profile.subject,
+        userId: candidate,
+        email,
+        createdAt: now,
+      }));
+    if (existing && existing.email !== email) {
+      await this.store.updateExternalEmail('google', profile.subject, email);
+    }
+    const session = await this.startSession(identity.userId, now);
+    return {
+      ...session,
+      user: { id: identity.userId, phone: null, email, isNew: identity.userId === candidate },
+    };
+  }
+
+  private async startSession(userId: string, now: Date) {
     const token = randomBytes(32).toString('base64url');
     const expiresAt = new Date(now.getTime() + this.settings.sessionDays * 24 * HOUR);
     await this.store.insertSession({
       tokenHash: sha256(token),
-      userId: identity.userId,
+      userId,
       createdAt: now,
       expiresAt,
       revokedAt: null,
     });
-    return {
-      token,
-      expiresAt: expiresAt.toISOString(),
-      user: { id: identity.userId, phone, isNew: identity.userId === candidate },
-    };
+    return { token, expiresAt: expiresAt.toISOString() };
   }
 
   /** The player a session token belongs to, or undefined if it is unknown, expired or revoked. */
@@ -233,7 +295,10 @@ export class AuthService {
   }
 
   async account(userId: string) {
-    const identity = await this.store.findIdentityByUser(userId);
-    return { id: userId, phone: identity?.phone ?? null };
+    const [phone, google] = await Promise.all([
+      this.store.findIdentityByUser(userId),
+      this.store.findExternalIdentityByUser(userId),
+    ]);
+    return { id: userId, phone: phone?.phone ?? null, email: google?.email ?? null };
   }
 }

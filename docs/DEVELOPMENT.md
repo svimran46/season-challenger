@@ -54,7 +54,29 @@ snapshots are append-only by version, and an advisory lock lets one instance wri
 | GET    | `/v1/fixtures/:id/points`        | Fantasy points per player, finished fixtures only |
 | POST   | `/v1/squads/validate`            | Checks a squad; locked once the fixture kicks off |
 
-### Phone sign-in
+### Sign-in
+
+Players sign in with Google, or with a phone number and a texted code.
+
+| Method | Path               | Notes                                                                  |
+| ------ | ------------------ | ---------------------------------------------------------------------- |
+| GET    | `/v1/auth/methods` | `{ phone, google: { webClientId } \| null }`: what the app should show |
+| POST   | `/v1/auth/google`  | `{ idToken }` from Google; returns `{ token, expiresAt, user }`        |
+
+Google sign-in is on when `GOOGLE_WEB_CLIENT_ID` is set. The API checks each ID token's signature,
+expiry, issuer and that its audience is that web client id; the Android app and the web app both
+request tokens for it. A Google account maps to one player by Google's stable account id, so a
+changed email address keeps the same player. In production without a real `SMS_PROVIDER`, phone
+sign-in is switched off (`phone: false`, `/v1/auth/code` answers 503 `phone_unavailable`), and the
+API refuses to start if neither Google nor a real SMS provider is configured.
+
+Google Cloud setup: create OAuth clients in one project: a **Web** client (its id goes in
+`GOOGLE_WEB_CLIENT_ID`; add your web app's address under authorised JavaScript origins) and an
+**Android** client for package `com.seasonchallenger.app` with the SHA-1 of the key that signs the
+APK. The Android client is never referenced in code, but Google refuses sign-in from the APK
+without it.
+
+#### Phone codes
 
 | Method | Path                | Notes                                                                 |
 | ------ | ------------------- | --------------------------------------------------------------------- |

@@ -1,10 +1,17 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
+import * as WebBrowser from 'expo-web-browser';
 import { useState } from 'react';
+import { Platform } from 'react-native';
 import { AuthProvider, useAuth } from '../src/auth';
 import { useTheme } from '../src/theme';
 import { Loading, Screen } from '../src/ui';
+
+// On web, Google sign-in opens a popup that comes back to this app. When this page is that popup,
+// this hands Google's answer to the sign-in screen that opened it and closes the popup. It sits
+// here, not on the sign-in screen, because routes load lazily on web and the popup lands on `/`.
+if (Platform.OS === 'web') WebBrowser.maybeCompleteAuthSession();
 
 export default function RootLayout() {
   const [queryClient] = useState(

@@ -21,6 +21,14 @@ export interface PhoneIdentity {
   createdAt: Date;
 }
 
+export interface ExternalIdentity {
+  provider: 'google';
+  subject: string;
+  userId: string;
+  email: string | null;
+  createdAt: Date;
+}
+
 export interface SessionRecord {
   tokenHash: string;
   userId: string;
@@ -50,6 +58,19 @@ export interface AuthStore {
   /** Links the number to `userId` unless it already has a player; returns the stored link. */
   createIdentity(identity: PhoneIdentity): Promise<PhoneIdentity>;
 
+  findExternalIdentity(
+    provider: ExternalIdentity['provider'],
+    subject: string,
+  ): Promise<ExternalIdentity | undefined>;
+  findExternalIdentityByUser(userId: string): Promise<ExternalIdentity | undefined>;
+  /** Links the account to `userId` unless it already has a player; returns the stored link. */
+  createExternalIdentity(identity: ExternalIdentity): Promise<ExternalIdentity>;
+  updateExternalEmail(
+    provider: ExternalIdentity['provider'],
+    subject: string,
+    email: string | null,
+  ): Promise<void>;
+
   // ------------------------------------------------------------ sessions
   insertSession(session: SessionRecord): Promise<void>;
   findSession(tokenHash: string): Promise<SessionRecord | undefined>;
@@ -60,6 +81,7 @@ export class MemoryAuthStore implements AuthStore {
   private readonly challenges: OtpChallenge[] = [];
   private readonly identities = new Map<string, PhoneIdentity>();
   private readonly sessions = new Map<string, SessionRecord>();
+  private readonly external = new Map<string, ExternalIdentity>();
 
   async insertChallenge(challenge: OtpChallenge) {
     this.challenges.push({ ...challenge });
@@ -108,6 +130,31 @@ export class MemoryAuthStore implements AuthStore {
       this.identities.set(identity.phone, { ...identity });
     }
     return { ...this.identities.get(identity.phone)! };
+  }
+
+  async findExternalIdentity(provider: ExternalIdentity['provider'], subject: string) {
+    const i = this.external.get(`${provider}:${subject}`);
+    return i ? { ...i } : undefined;
+  }
+
+  async findExternalIdentityByUser(userId: string) {
+    for (const i of this.external.values()) if (i.userId === userId) return { ...i };
+    return undefined;
+  }
+
+  async createExternalIdentity(identity: ExternalIdentity) {
+    const key = `${identity.provider}:${identity.subject}`;
+    if (!this.external.has(key)) this.external.set(key, { ...identity });
+    return { ...this.external.get(key)! };
+  }
+
+  async updateExternalEmail(
+    provider: ExternalIdentity['provider'],
+    subject: string,
+    email: string | null,
+  ) {
+    const i = this.external.get(`${provider}:${subject}`);
+    if (i) i.email = email;
   }
 
   async insertSession(session: SessionRecord) {

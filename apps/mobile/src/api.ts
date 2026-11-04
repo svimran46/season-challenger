@@ -193,15 +193,33 @@ export interface CodeSent {
 export interface SignedIn {
   token: string;
   expiresAt: string;
-  user: { id: string; phone: string; isNew: boolean };
+  user: { id: string; phone: string | null; email?: string | null; isNew: boolean };
+}
+
+/** The sign-in methods this server offers. */
+export interface AuthMethods {
+  /** False when the server cannot send text messages, so phone sign-in is hidden. */
+  phone: boolean;
+  /** Null when Google sign-in is not configured on the server. */
+  google: { webClientId: string } | null;
 }
 
 export interface Me {
   id: string;
-  phone: string;
+  phone: string | null;
+  email: string | null;
 }
 
 export const api = {
+  authMethods: () =>
+    request<AuthMethods>('/v1/auth/methods').catch((error: unknown) => {
+      // A server from before Google sign-in has no such route; it only offers phone sign-in.
+      if (error instanceof ApiError && error.status === 404) {
+        return { phone: true, google: null } satisfies AuthMethods;
+      }
+      throw error;
+    }),
+  signInWithGoogle: (idToken: string) => request<SignedIn>('/v1/auth/google', post({ idToken })),
   requestCode: (phone: string) => request<CodeSent>('/v1/auth/code', post({ phone })),
   verifyCode: (phone: string, code: string) =>
     request<SignedIn>('/v1/auth/verify', post({ phone, code })),

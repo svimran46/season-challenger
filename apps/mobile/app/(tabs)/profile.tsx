@@ -17,7 +17,11 @@ export default function ProfileScreen() {
         <Card>
           <Text style={[styles.label, { color: t.muted }]}>Signed in as</Text>
           <Text style={[styles.phone, { color: t.text }]}>
-            {me.data?.phone ?? (me.isError ? 'Could not load your number' : 'Loading…')}
+            {me.data
+              ? (me.data.email ?? me.data.phone ?? 'Your account')
+              : me.isError
+                ? 'Could not load your account'
+                : 'Loading…'}
           </Text>
           <View style={{ marginTop: 16 }}>
             <Button

@@ -34,7 +34,7 @@ const session = (tokenHash: string, userId = 'u-1'): SessionRecord => ({
 
 // Only this file's tables, so the other database tests are left alone.
 beforeEach(async () => {
-  await db.execute(sql`truncate otp_challenge, phone_identity, auth_session`);
+  await db.execute(sql`truncate otp_challenge, phone_identity, auth_session, external_identity`);
 });
 afterAll(close);
 
@@ -126,5 +126,38 @@ describe('PgAuthStore sessions', () => {
     expect((await store.findSession('t1'))?.revokedAt).toEqual(at(10));
     expect(await store.findSession('t2')).toEqual(session('t2', 'u-2'));
     await store.revokeSession('missing', at(10));
+  });
+});
+
+describe('PgAuthStore Google accounts', () => {
+  const google = (subject: string, userId: string, email: string | null = null) => ({
+    provider: 'google' as const,
+    subject,
+    userId,
+    email,
+    createdAt: at(0),
+  });
+
+  it('links one Google account to one player, even when two first sign-ins race', async () => {
+    const [a, b] = await Promise.all([
+      store.createExternalIdentity(google('sub-1', 'u-a', 'a@gmail.com')),
+      store.createExternalIdentity(google('sub-1', 'u-b', 'a@gmail.com')),
+    ]);
+    expect(a.userId).toBe(b.userId);
+    expect(await store.findExternalIdentity('google', 'sub-1')).toMatchObject({
+      userId: a.userId,
+      email: 'a@gmail.com',
+    });
+    expect(await store.findExternalIdentity('google', 'nobody')).toBeUndefined();
+  });
+
+  it('finds the account by player and updates its email', async () => {
+    await store.createExternalIdentity(google('sub-2', 'u-2', 'old@gmail.com'));
+    await store.updateExternalEmail('google', 'sub-2', 'new@gmail.com');
+    expect(await store.findExternalIdentityByUser('u-2')).toMatchObject({
+      subject: 'sub-2',
+      email: 'new@gmail.com',
+    });
+    expect(await store.findExternalIdentityByUser('u-none')).toBeUndefined();
   });
 });

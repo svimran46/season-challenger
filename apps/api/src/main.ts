@@ -1,5 +1,6 @@
 import type { NestExpressApplication } from '@nestjs/platform-express';
 import { createApp } from './app';
+import { GoogleIdTokenVerifier } from './auth/google';
 import { ConsoleSmsSender, SslWirelessSmsSender, type SmsSender } from './auth/sms';
 import { loadConfig } from './config';
 import { createDatabase } from './db/client';
@@ -14,14 +15,25 @@ async function main() {
   const app = (await createApp({
     database,
     workerSeconds: config.workerSeconds,
-    auth: { sms, settings: { secret: config.authSecret } },
+    auth: {
+      sms,
+      settings: { secret: config.authSecret, phoneEnabled: config.phoneSignIn },
+      google: config.googleWebClientId
+        ? new GoogleIdTokenVerifier(config.googleWebClientId)
+        : undefined,
+    },
   })) as NestExpressApplication;
   if (config.trustProxy) app.set('trust proxy', true);
   await app.listen(config.port);
   console.log(
     `Season Challenger API listening on http://localhost:${config.port} (${
       database ? 'Postgres' : 'in memory'
-    }, sign-in codes via ${sms.name})`,
+    }; sign-in: ${[
+      config.googleWebClientId ? 'Google' : '',
+      config.phoneSignIn ? `phone codes via ${sms.name}` : '',
+    ]
+      .filter(Boolean)
+      .join(', ')})`,
   );
 }
 

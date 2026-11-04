@@ -1,7 +1,13 @@
 import { and, desc, eq, gte, isNull, lt, sql } from 'drizzle-orm';
 import type { Database } from '../db/client';
-import { authSession, otpChallenge, phoneIdentity } from '../db/schema';
-import type { AuthStore, OtpChallenge, PhoneIdentity, SessionRecord } from './auth.store';
+import { authSession, externalIdentity, otpChallenge, phoneIdentity } from '../db/schema';
+import type {
+  AuthStore,
+  ExternalIdentity,
+  OtpChallenge,
+  PhoneIdentity,
+  SessionRecord,
+} from './auth.store';
 
 type ChallengeRow = typeof otpChallenge.$inferSelect;
 type IdentityRow = typeof phoneIdentity.$inferSelect;
@@ -93,6 +99,45 @@ export class PgAuthStore implements AuthStore {
 
   // ------------------------------------------------------------ sessions
 
+  async findExternalIdentity(
+    provider: ExternalIdentity['provider'],
+    subject: string,
+  ): Promise<ExternalIdentity | undefined> {
+    const [row] = await this.db
+      .select()
+      .from(externalIdentity)
+      .where(and(eq(externalIdentity.provider, provider), eq(externalIdentity.subject, subject)));
+    return row ? toExternal(row) : undefined;
+  }
+
+  async findExternalIdentityByUser(userId: string): Promise<ExternalIdentity | undefined> {
+    const [row] = await this.db
+      .select()
+      .from(externalIdentity)
+      .where(eq(externalIdentity.userId, userId))
+      .limit(1);
+    return row ? toExternal(row) : undefined;
+  }
+
+  async createExternalIdentity(identity: ExternalIdentity): Promise<ExternalIdentity> {
+    await this.db
+      .insert(externalIdentity)
+      .values(identity)
+      .onConflictDoNothing({ target: [externalIdentity.provider, externalIdentity.subject] });
+    return (await this.findExternalIdentity(identity.provider, identity.subject))!;
+  }
+
+  async updateExternalEmail(
+    provider: ExternalIdentity['provider'],
+    subject: string,
+    email: string | null,
+  ): Promise<void> {
+    await this.db
+      .update(externalIdentity)
+      .set({ email })
+      .where(and(eq(externalIdentity.provider, provider), eq(externalIdentity.subject, subject)));
+  }
+
   async insertSession(session: SessionRecord): Promise<void> {
     await this.db.insert(authSession).values({
       tokenHash: session.tokenHash,
@@ -141,4 +186,12 @@ const toSession = (r: SessionRow): SessionRecord => ({
   createdAt: r.createdAt,
   expiresAt: r.expiresAt,
   revokedAt: r.revokedAt,
+});
+
+const toExternal = (r: typeof externalIdentity.$inferSelect): ExternalIdentity => ({
+  provider: r.provider as ExternalIdentity['provider'],
+  subject: r.subject,
+  userId: r.userId,
+  email: r.email,
+  createdAt: r.createdAt,
 });

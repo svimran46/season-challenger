@@ -13,6 +13,7 @@ import type { VoucherOffer } from '@season/wallet';
 import { AuthModule } from './auth/auth.module';
 import type { AuthSettings } from './auth/auth.service';
 import { PgAuthStore } from './auth/pg-auth.store';
+import type { GoogleVerifier } from './auth/google';
 import type { SmsSender } from './auth/sms';
 import { WalletErrorFilter } from './common/wallet-error.filter';
 import { WORKER_SECONDS, type Clock } from './common/tokens';
@@ -54,6 +55,8 @@ export interface AuthAppOptions {
   /** Where sign-in codes go; the server log unless given. */
   sms?: SmsSender;
   settings?: Partial<AuthSettings>;
+  /** Google ID token checks; Google sign-in is off without it. */
+  google?: GoogleVerifier;
 }
 
 @Module({})
@@ -68,6 +71,7 @@ export class AppModule {
           clock: options.clock,
           sms: options.auth?.sms,
           settings: options.auth?.settings,
+          google: options.auth?.google,
           ...(db ? { store: new PgAuthStore(db) } : {}),
         }),
         FeedModule.register(options.feed, options.database?.db),

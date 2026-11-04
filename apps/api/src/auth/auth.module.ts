@@ -8,10 +8,12 @@ import {
   AUTH_STORE,
   AuthService,
   DEFAULT_AUTH_SETTINGS,
+  GOOGLE_VERIFIER,
   SMS_SENDER,
   type AuthSettings,
 } from './auth.service';
 import { MemoryAuthStore, type AuthStore } from './auth.store';
+import type { GoogleVerifier } from './google';
 import { ConsoleSmsSender, type SmsSender } from './sms';
 
 export interface AuthOptions {
@@ -21,6 +23,8 @@ export interface AuthOptions {
   /** Where codes go; ConsoleSmsSender (the server log) unless given. */
   sms?: SmsSender;
   settings?: Partial<AuthSettings>;
+  /** Checks Google ID tokens; Google sign-in is off without it. */
+  google?: GoogleVerifier;
 }
 
 /** Phone sign-in. Global, so every module's routes can use the sign-in guards. */
@@ -35,6 +39,7 @@ export class AuthModule {
         { provide: AUTH_STORE, useValue: options.store ?? new MemoryAuthStore() },
         { provide: SMS_SENDER, useValue: options.sms ?? new ConsoleSmsSender() },
         { provide: AUTH_SETTINGS, useValue: { ...DEFAULT_AUTH_SETTINGS, ...options.settings } },
+        { provide: GOOGLE_VERIFIER, useValue: options.google ?? null },
         { provide: CLOCK, useValue: options.clock ?? (() => new Date()) },
         AuthService,
         { provide: APP_GUARD, useClass: IdentityGuard },

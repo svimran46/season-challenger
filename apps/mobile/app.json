@@ -6,7 +6,7 @@
     "version": "0.1.0",
     "orientation": "portrait",
     "userInterfaceStyle": "automatic",
-    "plugins": ["expo-router"],
+    "plugins": ["expo-router", "@react-native-google-signin/google-signin"],
     "ios": {
       "bundleIdentifier": "com.seasonchallenger.app"
     },

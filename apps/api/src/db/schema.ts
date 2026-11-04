@@ -197,6 +197,24 @@ export const otpChallenge = pgTable(
   (t) => [index('otp_challenge_phone_idx').on(t.phone, t.createdAt)],
 );
 
+/** A sign-in account at another provider (so far only "google"), keyed by its stable subject id. */
+export const externalIdentity = pgTable(
+  'external_identity',
+  {
+    provider: text('provider').notNull(),
+    /** The provider's id for the person (Google's `sub`), which never changes. */
+    subject: text('subject').notNull(),
+    userId: text('user_id').notNull(),
+    /** Latest verified email the provider reported, for the profile screen. */
+    email: text('email'),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.provider, t.subject] }),
+    unique('external_identity_provider_user').on(t.provider, t.userId),
+  ],
+);
+
 /** A signed-in device. The bearer token itself is never stored. */
 export const authSession = pgTable(
   'auth_session',

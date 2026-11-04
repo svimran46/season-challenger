@@ -68,7 +68,7 @@ describe('phone sign-in', () => {
     const { token, user } = await signIn();
     expect(user).toMatchObject({ phone, isNew: true, id: expect.stringMatching(/^u_/) });
     const me = await http().get('/v1/me').set(bearer(token)).expect(200);
-    expect(me.body).toEqual({ id: user.id, phone });
+    expect(me.body).toEqual({ id: user.id, phone, email: null });
     const wallet = await http().get('/v1/me/wallet').set(bearer(token)).expect(200);
     expect(wallet.body.bonus).toBe(500);
   });
@@ -176,11 +176,26 @@ describe('phone sign-in', () => {
 });
 
 describe('sign-in configuration', () => {
-  it('refuses to start production without a secret or a real SMS provider', async () => {
+  it('refuses to start production without a secret or any way to sign in', async () => {
     const { loadConfig } = await import('../src/config');
+    const prod = {
+      NODE_ENV: 'production',
+      DATABASE_URL: 'postgres://x@localhost/db',
+      AUTH_SECRET: 'x'.repeat(32),
+    };
     expect(() =>
       loadConfig({ NODE_ENV: 'production', DATABASE_URL: 'postgres://x@localhost/db' }),
-    ).toThrow(/AUTH_SECRET[\s\S]*SMS_PROVIDER/);
+    ).toThrow(/AUTH_SECRET[\s\S]*GOOGLE_WEB_CLIENT_ID/);
+    const googleOnly = loadConfig({
+      ...prod,
+      GOOGLE_WEB_CLIENT_ID: 'abc.apps.googleusercontent.com',
+    });
+    expect(googleOnly).toMatchObject({
+      phoneSignIn: false,
+      googleWebClientId: 'abc.apps.googleusercontent.com',
+    });
+    expect(loadConfig({}).phoneSignIn).toBe(true);
+    expect(() => loadConfig({ GOOGLE_WEB_CLIENT_ID: 'not-a-client-id' })).toThrow();
     expect(loadConfig({}).sms).toEqual({ provider: 'console' });
     expect(() => loadConfig({ SMS_PROVIDER: 'sslwireless' })).toThrow(/SSLWIRELESS_API_TOKEN/);
     expect(

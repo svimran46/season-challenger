@@ -16,6 +16,14 @@ const schema = z.object({
   /** Sender id SSL Wireless assigned to the account. */
   SSLWIRELESS_SID: z.preprocess(blankToUndefined, z.string().optional()),
   SSLWIRELESS_URL: z.preprocess(blankToUndefined, z.string().url().optional()),
+  /** OAuth web client id from Google Cloud; turns on Google sign-in. Not a secret. */
+  GOOGLE_WEB_CLIENT_ID: z.preprocess(
+    blankToUndefined,
+    z
+      .string()
+      .regex(/\.apps\.googleusercontent\.com$/, 'should end in .apps.googleusercontent.com')
+      .optional(),
+  ),
   /** Set when the API runs behind a proxy or load balancer, so rate limits see client IPs. */
   TRUST_PROXY: z.preprocess(blankToUndefined, z.enum(['true', 'false']).optional()),
 });
@@ -29,6 +37,9 @@ export interface Config {
     | { provider: 'console' }
     | { provider: 'sslwireless'; apiToken: string; sid: string; baseUrl?: string };
   trustProxy: boolean;
+  googleWebClientId: string | undefined;
+  /** Phone codes are offered only when they can reach a phone (not console in production). */
+  phoneSignIn: boolean;
 }
 
 /** Reads the environment once at boot and refuses to start on a setting that would lose data. */
@@ -49,12 +60,13 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
   ) {
     problems.push('SMS_PROVIDER=sslwireless needs SSLWIRELESS_API_TOKEN and SSLWIRELESS_SID.');
   }
-  if (parsed.NODE_ENV === 'production') {
-    if (parsed.SMS_PROVIDER === 'console') {
-      problems.push(
-        'SMS_PROVIDER=console only logs sign-in codes; production needs a real SMS provider.',
-      );
-    }
+  const production = parsed.NODE_ENV === 'production';
+  // In production the console sender would only log codes, so phone sign-in is switched off.
+  const phoneSignIn = !(production && parsed.SMS_PROVIDER === 'console');
+  if (production && !phoneSignIn && !parsed.GOOGLE_WEB_CLIENT_ID) {
+    problems.push(
+      'No way to sign in: set GOOGLE_WEB_CLIENT_ID, or a real SMS_PROVIDER for phone codes.',
+    );
   }
   if (problems.length > 0) throw new Error(`Bad configuration:\n- ${problems.join('\n- ')}`);
   return {
@@ -72,5 +84,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
           }
         : { provider: 'console' },
     trustProxy: parsed.TRUST_PROXY === 'true',
+    googleWebClientId: parsed.GOOGLE_WEB_CLIENT_ID,
+    phoneSignIn,
   };
 }
