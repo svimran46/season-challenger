@@ -32,7 +32,7 @@ const NO_SUCH_VOUCHER = 'no-such-voucher';
 const codesInvalid = () =>
   new WalletError(
     'voucher_codes_invalid',
-    'Those codes do not match a voucher for this partner. Check both, and ask for a new present code.',
+    'Those codes do not match a voucher for this partner. Check both, and ask for a new till code.',
   );
 
 /** What a partner does at the till. Every path needs both the voucher code and the present code. */
