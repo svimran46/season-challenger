@@ -25,6 +25,7 @@ jobs:
       - run: pnpm typecheck
       - run: pnpm test
       - run: pnpm --filter @season/api build
+      - run: pnpm --filter @season/portal build
 
   database:
     name: Database migrations and ledger tests

@@ -69,7 +69,7 @@ export class EconomyModule {
         ContestsService,
         VouchersService,
       ],
-      exports: [ContestsService, WalletService, LEDGER_STORE],
+      exports: [ContestsService, WalletService, LEDGER_STORE, ECONOMY_REPOSITORY],
     };
   }
 }

@@ -33,6 +33,12 @@ import { PgLedgerStore } from './ledger/pg-ledger.store';
 import { MasteryModule } from './mastery/mastery.module';
 import { PgMasteryStore } from './mastery/pg-mastery.store';
 import { pgPlayerNames } from './mastery/player-names';
+import { corsOptions } from './common/cors';
+import { MemoryEconomyRepository } from './economy/memory-economy.repository';
+import { MemoryPartnerStore } from './partner/memory-partner.store';
+import type { PartnerLimits } from './partner/partner-auth.service';
+import { PartnerModule } from './partner/partner.module';
+import { PgPartnerStore } from './partner/pg-partner.store';
 import { SquadsController } from './squads/squads.controller';
 import { Worker } from './worker';
 
@@ -57,6 +63,12 @@ export interface AppModuleOptions {
   offers?: readonly VoucherOffer[];
   auth?: AuthAppOptions;
   kyc?: KycAppOptions;
+  partner?: PartnerAppOptions;
+}
+
+export interface PartnerAppOptions {
+  presentSecret?: string;
+  limits?: PartnerLimits;
 }
 
 export interface KycAppOptions {
@@ -78,11 +90,14 @@ export class AppModule {
   static register(options: AppModuleOptions): DynamicModule {
     const close = options.database?.close;
     const db = options.database?.db;
+    const memoryEconomy = db ? undefined : new MemoryEconomyRepository();
     // One instance, shared with the KYC module, which verifies players through the wallet.
     const economy = EconomyModule.register({
       clock: options.clock,
       offers: options.offers,
-      ...(db ? { ledger: new PgLedgerStore(db), repository: new PgEconomyRepository(db) } : {}),
+      ...(db
+        ? { ledger: new PgLedgerStore(db), repository: new PgEconomyRepository(db) }
+        : { repository: memoryEconomy }),
     });
     return {
       module: AppModule,
@@ -102,6 +117,13 @@ export class AppModule {
           vault: options.kyc?.vault,
           settings: options.kyc?.settings,
           ...(db ? { store: new PgKycStore(db) } : {}),
+        }),
+        PartnerModule.register({
+          clock: options.clock,
+          economy,
+          store: db ? new PgPartnerStore(db) : new MemoryPartnerStore(memoryEconomy!),
+          presentSecret: options.partner?.presentSecret ?? 'dev-only-present-secret',
+          limits: options.partner?.limits,
         }),
         MasteryModule.register({
           clock: options.clock,
@@ -136,6 +158,10 @@ export interface CreateAppOptions {
   auth?: AuthAppOptions;
   /** ID check: photo storage, encryption key and reviewer token. */
   kyc?: KycAppOptions;
+  /** Voucher acceptance at partner tills. */
+  partner?: PartnerAppOptions;
+  /** Browser origins allowed to call the API. Unset: open in development, closed in production. */
+  corsOrigins?: readonly string[];
   logger?: false;
 }
 
@@ -152,10 +178,11 @@ export async function createApp(options: CreateAppOptions = {}): Promise<INestAp
       offers: options.offers,
       auth: options.auth,
       kyc: options.kyc,
+      partner: options.partner,
     }),
     { logger: options.logger === false ? false : undefined },
   );
-  app.enableCors();
+  app.enableCors(corsOptions(options.corsOrigins));
   app.setGlobalPrefix('v1', { exclude: ['health', 'review'] });
   app.useGlobalFilters(new WalletErrorFilter());
   app.enableShutdownHooks();

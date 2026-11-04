@@ -299,7 +299,7 @@ export function voucherStatus(v: VoucherState, now: Date): VoucherStatus {
 
 /**
  * Checks a partner's attempt to accept a voucher at the till. Only the issuing partner can
- * accept it, once, before it expires; the cashier also matches the verified name the app shows.
+ * accept it, once, before it expires. The caller has already checked the holder's present code.
  */
 export function checkVoucherUse(
   voucher: VoucherState & { partnerId: string },
@@ -315,10 +315,20 @@ export function checkVoucherUse(
   }
 }
 
+/** Puts a code typed at a till back in its canonical form, whatever the case or spacing. */
+export function normalizeVoucherCode(input: string): string {
+  const compact = input.toUpperCase().replace(/[^0-9A-Z]/g, '');
+  const body = compact.length === 10 && compact.startsWith('SC') ? compact.slice(2) : compact;
+  return `SC-${body.slice(0, 4)}-${body.slice(4)}`;
+}
+
 // Crockford-style alphabet without 0/O, 1/I/L: easy to read out at a till.
 const CODE_ALPHABET = '23456789ABCDEFGHJKMNPQRSTUVWXYZ';
 
-/** A random voucher code like SC-7KQ2-M9XT. The code alone is not enough: it is tied to the account. */
+/**
+ * A random voucher code like SC-7KQ2-M9XT. The code alone is not enough: a partner also needs the
+ * holder's present code (see present-code.ts), which only the account that redeemed it can get.
+ */
 export function generateVoucherCode(
   random: (bytes: Uint8Array) => Uint8Array = (b) => globalThis.crypto.getRandomValues(b),
 ): string {

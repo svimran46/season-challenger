@@ -155,6 +155,20 @@ export class MemoryEconomyRepository implements EconomyRepository {
     if (o && o.stock !== null) o.stock -= 1;
   }
 
+  /** For the partner store's memory half; Postgres does these with a query. */
+  voucherRecords(): VoucherRecord[] {
+    return [...this.vouchers.values()];
+  }
+
+  offerTerms(offerId: string): string {
+    return this.offers.get(offerId)?.terms ?? '';
+  }
+
+  markVoucherUsed(id: string, at: string, reference: string): void {
+    const voucher = this.vouchers.get(id);
+    if (voucher) this.vouchers.set(id, { ...voucher, usedAt: at, usedReference: reference });
+  }
+
   async getVoucher(id: string) {
     const v = this.vouchers.get(id);
     return v && copy(v);

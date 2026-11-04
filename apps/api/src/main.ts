@@ -21,6 +21,8 @@ async function main() {
   const app = (await createApp({
     database,
     workerSeconds: config.workerSeconds,
+    partner: { presentSecret: config.voucherPresentSecret },
+    corsOrigins: config.portalOrigins,
     auth: {
       sms,
       settings: { secret: config.authSecret, phoneEnabled: config.phoneSignIn },

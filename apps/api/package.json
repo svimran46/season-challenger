@@ -11,6 +11,7 @@
     "test": "vitest run",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
+    "partner:create": "tsx --env-file-if-exists=../../.env src/partner/create-partner.ts",
     "test:db": "vitest run --config vitest.db.config.ts"
   },
   "dependencies": {

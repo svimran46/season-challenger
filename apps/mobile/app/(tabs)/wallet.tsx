@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'expo-router';
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import {
   api,
@@ -280,11 +280,59 @@ function VoucherCard({ voucher }: { voucher: MyVoucher }) {
         />
       </View>
       <Text style={[styles.code, { color: t.text, borderColor: t.border }]}>{voucher.code}</Text>
-      <Text style={{ color: t.muted, fontSize: 13 }}>
-        {voucher.discountText}. Show this code in your app at the partner; it works only with your
-        verified name.
-      </Text>
+      <Text style={{ color: t.muted, fontSize: 13 }}>{voucher.discountText}.</Text>
+      {active ? <ShowAtTill voucherId={voucher.id} /> : null}
     </Card>
+  );
+}
+
+/**
+ * The short code that proves the holder is at the till. A partner needs it as well as the voucher
+ * code, so a code passed to someone else is no use on its own.
+ */
+function ShowAtTill({ voucherId }: { voucherId: string }) {
+  const t = useTheme();
+  const [left, setLeft] = useState(0);
+  const present = useMutation({
+    mutationFn: () => api.presentCode(voucherId),
+    onSuccess: (code) => setLeft(code.validForSeconds),
+  });
+  useEffect(() => {
+    if (left <= 0) return;
+    const timer = setTimeout(() => setLeft((s) => s - 1), 1000);
+    return () => clearTimeout(timer);
+  }, [left]);
+  const showing = present.data && left > 0;
+  return (
+    <View style={{ marginTop: 12 }}>
+      {showing ? (
+        <>
+          <Text
+            accessibilityLabel={`Till code ${present.data.code.split('').join(' ')}`}
+            style={[styles.code, { color: t.text, borderColor: t.accent }]}
+          >
+            {present.data.code}
+          </Text>
+          <Text style={{ color: t.muted, fontSize: 13 }}>
+            Tell the cashier this code and your voucher code. Good for {left}s.
+          </Text>
+        </>
+      ) : (
+        <>
+          <Button
+            label="Show at the till"
+            kind="secondary"
+            busy={present.isPending}
+            onPress={() => present.mutate()}
+          />
+          {present.isError ? (
+            <Text accessibilityRole="alert" style={{ color: t.live, marginTop: 8 }}>
+              Couldn't get a till code. Check your connection and try again.
+            </Text>
+          ) : null}
+        </>
+      )}
+    </View>
   );
 }
 

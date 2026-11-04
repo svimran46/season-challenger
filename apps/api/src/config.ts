@@ -27,6 +27,10 @@ const schema = z.object({
   ),
   /** Set when the API runs behind a proxy or load balancer, so rate limits see client IPs. */
   TRUST_PROXY: z.preprocess(blankToUndefined, z.enum(['true', 'false']).optional()),
+  /** Key for the short codes a voucher holder shows at the till. */
+  VOUCHER_PRESENT_SECRET: z.preprocess(blankToUndefined, z.string().optional()),
+  /** Comma-separated browser origins allowed to call the API, such as the partner portal. */
+  PORTAL_ORIGINS: z.preprocess(blankToUndefined, z.string().optional()),
   /** Key for hashing ID document numbers (one ID, one account). */
   ID_HASH_SECRET: z.preprocess(blankToUndefined, z.string().optional()),
   /** Base64 of 32 random bytes: encrypts ID photos and typed document numbers at rest. */
@@ -48,6 +52,8 @@ export interface Config {
     | { provider: 'console' }
     | { provider: 'sslwireless'; apiToken: string; sid: string; baseUrl?: string };
   trustProxy: boolean;
+  voucherPresentSecret: string;
+  portalOrigins: string[] | undefined;
   googleWebClientId: string | undefined;
   /** Phone codes are offered only when they can reach a phone (not console in production). */
   phoneSignIn: boolean;
@@ -98,6 +104,11 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     if (!parsed.ID_HASH_SECRET || parsed.ID_HASH_SECRET.length < 32) {
       problems.push('ID_HASH_SECRET must be a random value of 32+ characters in production.');
     }
+    if (!parsed.VOUCHER_PRESENT_SECRET || parsed.VOUCHER_PRESENT_SECRET.length < 32) {
+      problems.push(
+        'VOUCHER_PRESENT_SECRET must be a random value of 32+ characters in production.',
+      );
+    }
     if (!parsed.KYC_ENCRYPTION_KEY) {
       problems.push('KYC_ENCRYPTION_KEY must be set in production: it encrypts ID photos.');
     }
@@ -114,6 +125,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     databaseUrl: parsed.DATABASE_URL,
     workerSeconds: parsed.WORKER_SECONDS,
     authSecret: parsed.AUTH_SECRET ?? 'dev-only-auth-secret',
+    voucherPresentSecret: parsed.VOUCHER_PRESENT_SECRET ?? 'dev-only-present-secret',
+    portalOrigins: parsed.PORTAL_ORIGINS?.split(',').map((o) => o.trim()),
     sms:
       parsed.SMS_PROVIDER === 'sslwireless'
         ? {

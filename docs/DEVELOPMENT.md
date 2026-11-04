@@ -150,6 +150,32 @@ the stats can resolve are generated, so there are no formation calls: no feed su
 yet. The worker grades finished matches and records the stats snapshot version used. A later
 correction does not change a graded card; regrading is not built.
 
+### Partner portal
+
+`apps/portal` is where shops and travel companies accept vouchers: `pnpm --filter @season/portal dev`.
+A voucher code alone is not enough. The holder taps "Show at the till" for a 6-digit code that lasts
+about 2 minutes, and the cashier needs both, so a code sold or screenshotted stops working.
+
+There is no self-sign-up. Create a partner and its first staff member with:
+
+```bash
+pnpm --filter @season/api partner:create -- --id acme --name "Acme" --category shop --email owner@acme.example --staff "Owner name"
+```
+
+It asks for nothing else: the password comes from `PARTNER_PASSWORD` (12+ characters).
+
+| Method | Path                          | Notes                                                        |
+| ------ | ----------------------------- | ------------------------------------------------------------ |
+| POST   | `/v1/me/vouchers/:id/present` | Holder only: the short code to show at the till              |
+| POST   | `/v1/partner/auth/login`      | Staff email and password; rate limited                       |
+| POST   | `/v1/partner/auth/logout`     | Ends the session                                             |
+| GET    | `/v1/partner/me`              | The signed-in staff member and partner                       |
+| POST   | `/v1/partner/vouchers/check`  | Both codes; shows the offer. Same failure for any wrong code |
+| POST   | `/v1/partner/vouchers/accept` | Both codes, reference, requestId; single use, retry-safe     |
+| GET    | `/v1/partner/vouchers`        | This partner's accepted vouchers, newest first               |
+
+Cancelling a voucher and refunding its coins is not built yet.
+
 ### Where the economy is stored
 
 With `DATABASE_URL` set, players, coins (`PgLedgerStore`), tournaments, entries and vouchers live

@@ -10,4 +10,8 @@ export const DATABASE = Symbol('DATABASE');
 export const FEED_SYNC = Symbol('FEED_SYNC');
 export const WORKER_SECONDS = Symbol('WORKER_SECONDS');
 
+export const PARTNER_STORE = Symbol('PARTNER_STORE');
+export const PARTNER_LIMITS = Symbol('PARTNER_LIMITS');
+export const VOUCHER_PRESENT_SECRET = Symbol('VOUCHER_PRESENT_SECRET');
+
 export type Clock = () => Date;

@@ -16,6 +16,8 @@ const STATUS: Record<WalletErrorCode, HttpStatus> = {
   out_of_stock: HttpStatus.CONFLICT,
   limit_reached: HttpStatus.CONFLICT,
   voucher_not_usable: HttpStatus.CONFLICT,
+  // One answer for a wrong voucher code, a wrong present code and another partner's voucher.
+  voucher_codes_invalid: HttpStatus.NOT_FOUND,
   idempotency_conflict: HttpStatus.CONFLICT,
   // These mean a bug produced a bad transaction, not a user mistake.
   unbalanced: HttpStatus.INTERNAL_SERVER_ERROR,

@@ -1,0 +1,22 @@
+{
+  "name": "@season/portal",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Where partner shops and travel companies accept Season Challenger vouchers.",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "react": "19.1.0",
+    "react-dom": "19.1.0"
+  },
+  "devDependencies": {
+    "@types/react": "~19.1.0",
+    "@types/react-dom": "~19.1.0",
+    "@vitejs/plugin-react": "^4.7.0",
+    "vite": "7.3.7"
+  }
+}

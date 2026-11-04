@@ -453,6 +453,38 @@ export const voucherPartner = pgTable('voucher_partner', {
   createdAt: createdAt(),
 });
 
+export const partnerStaffRoleEnum = pgEnum('partner_staff_role', ['owner', 'cashier']);
+
+/** Someone who accepts vouchers for a partner. Separate from player accounts. */
+export const partnerStaff = pgTable('partner_staff', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  partnerId: text('partner_id')
+    .notNull()
+    .references(() => voucherPartner.id),
+  /** Lower case. */
+  email: text('email').notNull().unique(),
+  /** scrypt; see partner/password.ts. */
+  passwordHash: text('password_hash').notNull(),
+  name: text('name').notNull(),
+  role: partnerStaffRoleEnum('role').notNull().default('cashier'),
+  active: boolean('active').notNull().default(true),
+  createdAt: createdAt(),
+});
+
+export const partnerSession = pgTable(
+  'partner_session',
+  {
+    tokenHash: text('token_hash').primaryKey(),
+    staffId: uuid('staff_id')
+      .notNull()
+      .references(() => partnerStaff.id),
+    expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+    revokedAt: timestamp('revoked_at', { withTimezone: true }),
+    createdAt: createdAt(),
+  },
+  (t) => [index('partner_session_staff_idx').on(t.staffId)],
+);
+
 /** A discount a partner offers for won coins. validateOffer() in @season/wallet runs on save. */
 export const voucherOffer = pgTable(
   'voucher_offer',
@@ -511,6 +543,9 @@ export const voucher = pgTable(
     usedAt: timestamp('used_at', { withTimezone: true }),
     /** The partner's receipt or booking reference. */
     usedReference: text('used_reference'),
+    usedByStaffId: uuid('used_by_staff_id').references(() => partnerStaff.id),
+    /** The till's request id, so a retried acceptance returns the first result. */
+    usedRequestId: text('used_request_id'),
     cancelledAt: timestamp('cancelled_at', { withTimezone: true }),
     redemptionTxnId: uuid('redemption_txn_id')
       .notNull()
@@ -519,6 +554,8 @@ export const voucher = pgTable(
   },
   (t) => [
     index('voucher_user_idx').on(t.userId, t.issuedAt),
+    index('voucher_partner_used_idx').on(t.partnerId, t.usedAt),
+    unique('voucher_partner_request_uq').on(t.partnerId, t.usedRequestId),
     check(
       'voucher_used_or_cancelled',
       sql`not (${t.usedAt} is not null and ${t.cancelledAt} is not null)`,

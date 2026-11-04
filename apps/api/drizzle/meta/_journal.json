@@ -43,6 +43,13 @@
       "when": 1793791314355,
       "tag": "0005_mastery_grading",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1793792136981,
+      "tag": "0006_partner_portal",
+      "breakpoints": true
     }
   ]
 }

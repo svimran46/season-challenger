@@ -272,6 +272,12 @@ async function idDocumentsForm(input: IdDocumentsInput): Promise<FormData> {
   return form;
 }
 
+export interface PresentCode {
+  code: string;
+  validForSeconds: number;
+  expiresAt: string;
+}
+
 export type MasteryAnswer =
   | { kind: 'outcome'; pick: 'home' | 'draw' | 'away'; confidence: number }
   | { kind: 'halfTimeLeader'; pick: 'home' | 'draw' | 'away' }
@@ -396,6 +402,8 @@ export const api = {
   redeem: (offerId: string, id: string) =>
     request<MyVoucher>('/v1/vouchers/redeem', post({ offerId, requestId: id })),
   myVouchers: () => request<MyVoucher[]>('/v1/me/vouchers'),
+  presentCode: (voucherId: string) =>
+    request<PresentCode>(`/v1/me/vouchers/${voucherId}/present`, post()),
 
   masteryCard: (fixtureId: string) =>
     request<MasteryCard>(`/v1/mastery/cards?fixtureId=${encodeURIComponent(fixtureId)}`),

@@ -286,6 +286,7 @@ describe('ID check configuration', () => {
       DATABASE_URL: 'postgres://x@localhost/db',
       AUTH_SECRET: 'x'.repeat(32),
       GOOGLE_WEB_CLIENT_ID: 'abc.apps.googleusercontent.com',
+      VOUCHER_PRESENT_SECRET: 'z'.repeat(32),
     };
     expect(() => loadConfig(prod)).toThrow(
       /ID_HASH_SECRET[\s\S]*KYC_ENCRYPTION_KEY[\s\S]*KYC_STORAGE_DIR/,
