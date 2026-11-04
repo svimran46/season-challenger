@@ -181,6 +181,11 @@ describe('sign-in configuration', () => {
     expect(() =>
       loadConfig({ NODE_ENV: 'production', DATABASE_URL: 'postgres://x@localhost/db' }),
     ).toThrow(/AUTH_SECRET[\s\S]*SMS_PROVIDER/);
-    expect(loadConfig({}).smsProvider).toBe('console');
+    expect(loadConfig({}).sms).toEqual({ provider: 'console' });
+    expect(() => loadConfig({ SMS_PROVIDER: 'sslwireless' })).toThrow(/SSLWIRELESS_API_TOKEN/);
+    expect(
+      loadConfig({ SMS_PROVIDER: 'sslwireless', SSLWIRELESS_API_TOKEN: 't', SSLWIRELESS_SID: 's' })
+        .sms,
+    ).toMatchObject({ provider: 'sslwireless', apiToken: 't', sid: 's' });
   });
 });

@@ -73,9 +73,12 @@ hour. Errors come back as `{ error, message }` with `invalid_phone`, `too_many_c
 The first sign-in links the number to a new player; the 500-coin bonus is paid on their first
 wallet view as before.
 
-Codes go through an `SmsSender` (`apps/api/src/auth/sms.ts`). `SMS_PROVIDER=console`, the only
-one so far, writes them to the log, and production refuses to start with it, as it does without an
-`AUTH_SECRET` of 32+ characters. Set `TRUST_PROXY=true` behind a load balancer so the per-address
+Codes go through an `SmsSender` (`apps/api/src/auth/sms.ts`). `SMS_PROVIDER=console` (the
+default) writes them to the log, and production refuses to start with it, as it does without an
+`AUTH_SECRET` of 32+ characters. `SMS_PROVIDER=sslwireless` sends real texts through SSL Wireless
+SMS Plus (API v3 single send) and needs `SSLWIRELESS_API_TOKEN` and `SSLWIRELESS_SID` (the sender
+id) from the SSL Wireless panel; `SSLWIRELESS_URL` overrides the host, e.g. for a sandbox. Keep the
+token in your deployment's secrets, never in the repo. Set `TRUST_PROXY=true` behind a load balancer so the per-address
 limit sees client addresses.
 
 In development (`AUTH_MODE=dev`, the default outside production) the API also accepts an

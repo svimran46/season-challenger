@@ -10,8 +10,12 @@ const schema = z.object({
   WORKER_SECONDS: z.coerce.number().int().min(5).default(60),
   /** Key for hashing sign-in codes. */
   AUTH_SECRET: z.preprocess(blankToUndefined, z.string().optional()),
-  /** Who sends sign-in codes. Only "console" (the server log) until a provider is chosen. */
-  SMS_PROVIDER: z.enum(['console']).default('console'),
+  /** Who sends sign-in codes: "console" (the server log) or "sslwireless" (SSL Wireless SMS Plus). */
+  SMS_PROVIDER: z.enum(['console', 'sslwireless']).default('console'),
+  SSLWIRELESS_API_TOKEN: z.preprocess(blankToUndefined, z.string().optional()),
+  /** Sender id SSL Wireless assigned to the account. */
+  SSLWIRELESS_SID: z.preprocess(blankToUndefined, z.string().optional()),
+  SSLWIRELESS_URL: z.preprocess(blankToUndefined, z.string().url().optional()),
   /** Set when the API runs behind a proxy or load balancer, so rate limits see client IPs. */
   TRUST_PROXY: z.preprocess(blankToUndefined, z.enum(['true', 'false']).optional()),
 });
@@ -21,7 +25,9 @@ export interface Config {
   databaseUrl: string | undefined;
   workerSeconds: number;
   authSecret: string;
-  smsProvider: 'console';
+  sms:
+    | { provider: 'console' }
+    | { provider: 'sslwireless'; apiToken: string; sid: string; baseUrl?: string };
   trustProxy: boolean;
 }
 
@@ -36,6 +42,14 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     if (!parsed.AUTH_SECRET || parsed.AUTH_SECRET.length < 32) {
       problems.push('AUTH_SECRET must be a random value of 32+ characters in production.');
     }
+  }
+  if (
+    parsed.SMS_PROVIDER === 'sslwireless' &&
+    (!parsed.SSLWIRELESS_API_TOKEN || !parsed.SSLWIRELESS_SID)
+  ) {
+    problems.push('SMS_PROVIDER=sslwireless needs SSLWIRELESS_API_TOKEN and SSLWIRELESS_SID.');
+  }
+  if (parsed.NODE_ENV === 'production') {
     if (parsed.SMS_PROVIDER === 'console') {
       problems.push(
         'SMS_PROVIDER=console only logs sign-in codes; production needs a real SMS provider.',
@@ -48,7 +62,15 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     databaseUrl: parsed.DATABASE_URL,
     workerSeconds: parsed.WORKER_SECONDS,
     authSecret: parsed.AUTH_SECRET ?? 'dev-only-auth-secret',
-    smsProvider: parsed.SMS_PROVIDER,
+    sms:
+      parsed.SMS_PROVIDER === 'sslwireless'
+        ? {
+            provider: 'sslwireless',
+            apiToken: parsed.SSLWIRELESS_API_TOKEN!,
+            sid: parsed.SSLWIRELESS_SID!,
+            baseUrl: parsed.SSLWIRELESS_URL,
+          }
+        : { provider: 'console' },
     trustProxy: parsed.TRUST_PROXY === 'true',
   };
 }

@@ -1,13 +1,16 @@
 import type { NestExpressApplication } from '@nestjs/platform-express';
 import { createApp } from './app';
-import { ConsoleSmsSender, type SmsSender } from './auth/sms';
+import { ConsoleSmsSender, SslWirelessSmsSender, type SmsSender } from './auth/sms';
 import { loadConfig } from './config';
 import { createDatabase } from './db/client';
 
 async function main() {
   const config = loadConfig();
   const database = config.databaseUrl ? createDatabase(config.databaseUrl) : undefined;
-  const sms: SmsSender = new ConsoleSmsSender(); // the only SMS_PROVIDER so far
+  const sms: SmsSender =
+    config.sms.provider === 'sslwireless'
+      ? new SslWirelessSmsSender(config.sms)
+      : new ConsoleSmsSender();
   const app = (await createApp({
     database,
     workerSeconds: config.workerSeconds,
