@@ -50,6 +50,7 @@ function RootStack() {
         <Stack.Screen name="fixture/[id]" options={{ title: 'Match' }} />
         <Stack.Screen name="squad/[contestId]" options={{ title: 'Pick your squad' }} />
         <Stack.Screen name="verify" options={{ title: 'Verify your ID', presentation: 'modal' }} />
+        <Stack.Screen name="shader-lab" options={{ title: 'Shader samples' }} />
       </Stack.Protected>
       <Stack.Protected guard={!signedIn}>
         <Stack.Screen name="sign-in" options={{ title: 'Sign in' }} />

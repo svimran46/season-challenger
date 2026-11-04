@@ -1,4 +1,5 @@
 import { useMutation, useQuery } from '@tanstack/react-query';
+import { router } from 'expo-router';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { api } from '../../src/api';
 import { useAuth } from '../../src/auth';
@@ -31,6 +32,14 @@ export default function ProfileScreen() {
               onPress={() => leave.mutate()}
             />
           </View>
+        </Card>
+        <SectionTitle>Design preview</SectionTitle>
+        <Card>
+          <Button
+            kind="secondary"
+            label="Shader samples"
+            onPress={() => router.push('/shader-lab')}
+          />
         </Card>
         <Text style={[styles.soon, { color: t.muted }]}>
           Your favourite club, badges and season history are coming soon.
