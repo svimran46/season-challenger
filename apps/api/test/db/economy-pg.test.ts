@@ -7,6 +7,7 @@ import { createApp } from '../../src/app';
 import { createDatabase } from '../../src/db/client';
 import { FeedSync } from '../../src/feed/feed-sync';
 import { PgLedgerStore } from '../../src/ledger/pg-ledger.store';
+import { DEMO_OFFERS } from '../demo-catalogue';
 
 /*
  * The match-day flow from test/economy.test.ts, against Postgres: players, tournaments, entries,
@@ -30,7 +31,14 @@ const as = (userId: string) => ({ 'x-user-id': userId });
 
 /** The app does not own the connection, so closing it for a restart keeps the database open. */
 async function start() {
-  app = await createApp({ feed, clock, database: { db }, workerSeconds: 0, logger: false });
+  app = await createApp({
+    feed,
+    clock,
+    database: { db },
+    workerSeconds: 0,
+    offers: DEMO_OFFERS,
+    logger: false,
+  });
   await app.listen(0);
 }
 

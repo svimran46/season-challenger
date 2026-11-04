@@ -9,6 +9,7 @@ import {
 } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import type { FootballFeed } from '@season/feed';
+import type { VoucherOffer } from '@season/wallet';
 import { WalletErrorFilter } from './common/wallet-error.filter';
 import { WORKER_SECONDS, type Clock } from './common/tokens';
 import type { Database } from './db/client';
@@ -41,6 +42,7 @@ export interface AppModuleOptions {
   clock?: Clock;
   database?: { db: Database; close?: () => Promise<void> };
   workerSeconds: number;
+  offers?: readonly VoucherOffer[];
 }
 
 @Module({})
@@ -54,6 +56,7 @@ export class AppModule {
         FeedModule.register(options.feed, options.database?.db),
         EconomyModule.register({
           clock: options.clock,
+          offers: options.offers,
           ...(db ? { ledger: new PgLedgerStore(db), repository: new PgEconomyRepository(db) } : {}),
         }),
       ],
@@ -76,6 +79,8 @@ export interface CreateAppOptions {
   database?: { db: Database; close?: () => Promise<void> };
   /** Seconds between worker runs; 0 stops the timer, so tests run the worker's tick themselves. */
   workerSeconds?: number;
+  /** Voucher offers saved on boot. Empty until real partners sign; tests pass a fixture. */
+  offers?: readonly VoucherOffer[];
   logger?: false;
 }
 
@@ -89,6 +94,7 @@ export async function createApp(options: CreateAppOptions = {}): Promise<INestAp
       clock: options.clock,
       database: options.database,
       workerSeconds: options.workerSeconds ?? 60,
+      offers: options.offers,
     }),
     { logger: options.logger === false ? false : undefined },
   );

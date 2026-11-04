@@ -1,8 +1,8 @@
 import type { VoucherOffer } from '@season/wallet';
 
 /**
- * Placeholder offers for development and demos. Partner names are invented and marked "Demo";
- * real partners and their offers are entered once agreements are signed.
+ * Placeholder offers for tests. Partner names are invented and marked "Demo"; the app itself
+ * starts with an empty catalogue until real partners sign. Tests pass these to createApp.
  */
 const base = {
   stock: null,

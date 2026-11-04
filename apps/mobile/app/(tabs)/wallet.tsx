@@ -136,6 +136,14 @@ export default function WalletScreen() {
             </Link>
           </Card>
         ) : null}
+        {offers.data?.length === 0 ? (
+          <Card>
+            <Text style={[styles.heading, { color: t.text }]}>Vouchers are coming soon</Text>
+            <Text style={{ color: t.muted, marginTop: 4 }}>
+              Keep winning coins: shop and travel partners will appear here.
+            </Text>
+          </Card>
+        ) : null}
         {offers.data?.map((o) => (
           <OfferCard key={o.id} offer={o} onRedeemed={refreshAll} />
         ))}

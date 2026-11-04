@@ -11,6 +11,7 @@ import {
 import { sql } from 'drizzle-orm';
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import { createDatabase } from '../../src/db/client';
+import { seedOffers } from '../../src/economy/economy.module';
 import { PgEconomyRepository } from '../../src/economy/pg-economy.repository';
 import {
   IdentityInUseError,
@@ -253,6 +254,16 @@ describe('PgEconomyRepository vouchers', () => {
       id: 'cafe-15',
     });
     expect(await repo.getOffer('nope')).toBeUndefined();
+  });
+
+  it('retires placeholder offers on boot, keeping their rows and remaining stock', async () => {
+    await repo.upsertOffers([offer(), offer({ id: 'demo-cafe-15', partnerId: 'demo-cafe' })]);
+    await ledger.transact((uow) => repo.decrementStock('demo-cafe-15', uow));
+    await seedOffers(repo, []);
+    expect(await repo.getOffer('demo-cafe-15')).toEqual(
+      offer({ id: 'demo-cafe-15', partnerId: 'demo-cafe', active: false, stock: 1 }),
+    );
+    expect((await repo.getOffer('cafe-15'))?.active).toBe(true);
   });
 
   it('stores issued vouchers and lists them newest first, optionally since a date', async () => {

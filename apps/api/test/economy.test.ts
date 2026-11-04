@@ -3,6 +3,7 @@ import { FakeFeed } from '@season/feed';
 import request from 'supertest';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createApp } from '../src/app';
+import { DEMO_OFFERS } from './demo-catalogue';
 
 // 2026-09-01: gameweek 4 kicks off on 5 September.
 let now = new Date('2026-09-01T06:00:00Z');
@@ -13,7 +14,7 @@ const http = () => request(app.getHttpServer());
 const as = (userId: string) => ({ 'x-user-id': userId });
 
 beforeAll(async () => {
-  app = await createApp({ feed, clock, logger: false });
+  app = await createApp({ feed, clock, offers: DEMO_OFFERS, logger: false });
   // Listen once so overlapping requests share one server.
   await app.listen(0);
 });

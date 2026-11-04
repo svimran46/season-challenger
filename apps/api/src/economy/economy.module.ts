@@ -1,9 +1,13 @@
 import { Module, type DynamicModule } from '@nestjs/common';
-import { MemoryLedgerStore, validateOffer, type LedgerStore } from '@season/wallet';
+import {
+  MemoryLedgerStore,
+  validateOffer,
+  type LedgerStore,
+  type VoucherOffer,
+} from '@season/wallet';
 import { CLOCK, ECONOMY_REPOSITORY, LEDGER_STORE, type Clock } from '../common/tokens';
 import { ContestsController } from './contests.controller';
 import { ContestsService } from './contests.service';
-import { DEMO_OFFERS } from './demo-catalogue';
 import { EconomyController } from './economy.controller';
 import { MeController } from './me.controller';
 import { MemoryEconomyRepository } from './memory-economy.repository';
@@ -18,6 +22,27 @@ export interface EconomyOptions {
   ledger?: LedgerStore;
   /** Players, tournaments and vouchers; in memory unless given (PgEconomyRepository). */
   repository?: EconomyRepository;
+  /** Offers saved on boot. Empty until real partners sign; tests pass a fixture catalogue. */
+  offers?: readonly VoucherOffer[];
+}
+
+/** Ids of the placeholder offers earlier builds saved on boot. */
+const RETIRED_OFFER_PREFIX = 'demo-';
+
+/**
+ * Saves the configured offers, and retires placeholder offers earlier builds stored: they are
+ * marked inactive, not deleted, so vouchers already issued for them keep working.
+ */
+export async function seedOffers(
+  repository: EconomyRepository,
+  offers: readonly VoucherOffer[],
+): Promise<void> {
+  for (const offer of offers) validateOffer(offer);
+  const keep = new Set(offers.map((o) => o.id));
+  const retired = (await repository.listOffers())
+    .filter((o) => o.active && o.id.startsWith(RETIRED_OFFER_PREFIX) && !keep.has(o.id))
+    .map((o) => ({ ...o, active: false }));
+  await repository.upsertOffers([...retired, ...offers]);
 }
 
 /** Coins, tournaments and vouchers. */
@@ -34,10 +59,9 @@ export class EconomyModule {
         { provide: LEDGER_STORE, useValue: options.ledger ?? new MemoryLedgerStore(clock) },
         {
           provide: ECONOMY_REPOSITORY,
-          // The demo catalogue is saved on boot until partners manage their own offers.
+          // The catalogue is saved on boot until partners manage their own offers.
           useFactory: async () => {
-            for (const offer of DEMO_OFFERS) validateOffer(offer);
-            await repository.upsertOffers(DEMO_OFFERS);
+            await seedOffers(repository, options.offers ?? []);
             return repository;
           },
         },
