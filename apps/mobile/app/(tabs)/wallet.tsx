@@ -1,14 +1,26 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'expo-router';
 import { useRef, useState } from 'react';
-import { RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
+import {
+  Linking,
+  RefreshControl,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from 'react-native';
 import {
   api,
   ApiError,
   requestId,
+  type DepositInvoice,
+  type MoneyRules,
   type MyVoucher,
+  type PayoutChannel,
   type VoucherOffer,
   type WalletActivity,
+  type WithdrawalRequest,
 } from '../../src/api';
 import { formatCoins, formatDay } from '../../src/format';
 import { useTheme } from '../../src/theme';
@@ -32,6 +44,13 @@ const ACTIVITY_LABELS: Record<WalletActivity['kind'], string> = {
   contest_settlement: 'Tournament prize',
   voucher_redemption: 'Voucher',
   voucher_refund: 'Voucher refunded',
+  deposit: 'Deposit · coins bought',
+  deposit_refund: 'Deposit refunded',
+  redeem: 'Cash → coins',
+  coin_to_cash: 'Coins → cash',
+  withdraw_hold: 'Cash-out requested',
+  withdraw_release: 'Cash-out reversed',
+  withdraw_paid: 'Cash-out paid',
 };
 
 const REASONS: Record<string, string> = {
@@ -42,7 +61,30 @@ const REASONS: Record<string, string> = {
   out_of_stock: 'Sold out',
   redemptions_blocked: 'Redemptions paused',
   offer_unavailable: 'Not available',
+  insufficient_cash: 'Not enough cash on your balance',
+  insufficient_funds: 'Not enough coins',
+  invalid_payout: 'Check the wallet number and amount',
 };
+
+const CHANNEL_LABELS: Record<PayoutChannel, string> = {
+  bkash: 'bKash',
+  nagad: 'Nagad',
+  rocket: 'Rocket',
+  upay: 'Upay',
+  bank: 'Bank',
+};
+
+const WITHDRAWAL_TONES: Record<WithdrawalRequest['status'], 'done' | 'todo' | 'live' | 'muted'> = {
+  pending: 'todo',
+  approved: 'live',
+  paid: 'done',
+  rejected: 'muted',
+  failed: 'muted',
+};
+
+type MoneySheetKind = 'deposit' | 'withdraw' | 'redeem' | 'convert';
+
+const taka = (n: number) => `৳${n.toLocaleString('en-US')}`;
 
 export default function WalletScreen() {
   const t = useTheme();
@@ -52,7 +94,11 @@ export default function WalletScreen() {
   const offers = useQuery({ queryKey: ['offers', category], queryFn: () => api.offers(category) });
   const vouchers = useQuery({ queryKey: ['my-vouchers'], queryFn: api.myVouchers });
   const activity = useQuery({ queryKey: ['activity'], queryFn: () => api.activity(10) });
+  const money = useQuery({ queryKey: ['money'], queryFn: api.money });
+  const withdrawals = useQuery({ queryKey: ['withdrawals'], queryFn: api.myWithdrawals });
   const refreshAll = () => qc.invalidateQueries();
+  // Which money form is open; an API without the money module keeps the coin-only wallet.
+  const [sheet, setSheet] = useState<MoneySheetKind | null>(null);
 
   const checkIn = useMutation({ mutationFn: api.checkIn, onSuccess: refreshAll });
 
@@ -66,6 +112,7 @@ export default function WalletScreen() {
   }
   if (!wallet.data) return <Loading />;
   const w = wallet.data;
+  const rules = money.data?.rules;
 
   return (
     <Screen>
@@ -87,10 +134,96 @@ export default function WalletScreen() {
               <Text style={[styles.amount, { color: t.accent }]}>
                 {w.winnings.toLocaleString('en-US')}
               </Text>
-              <Text style={{ color: t.muted }}>Won coins · redeem for vouchers</Text>
+              <Text style={{ color: t.muted }}>Won coins · vouchers or cash</Text>
             </View>
           </View>
         </Card>
+
+        {rules?.enabled ? (
+          <>
+            <Card>
+              <Text style={[styles.label, { color: t.muted }]}>Your cash</Text>
+              <Text style={[styles.total, { color: t.text }]}>{taka(w.cash)}</Text>
+              <View style={styles.split}>
+                <View style={styles.half}>
+                  <Text style={[styles.amount, { color: t.accent }]}>
+                    {taka(money.data?.pendingWithdrawals ?? 0)}
+                  </Text>
+                  <Text style={{ color: t.muted }}>Waiting for payout review</Text>
+                </View>
+                <View style={styles.half}>
+                  {w.verified ? (
+                    <Text style={{ color: t.muted, marginTop: 6 }}>
+                      Cash comes from won coins. Withdrawals are paid by hand, one by one.
+                    </Text>
+                  ) : (
+                    <Link href="/verify" asChild>
+                      <Button
+                        label="Verify to withdraw"
+                        kind="secondary"
+                        onPress={() => undefined}
+                      />
+                    </Link>
+                  )}
+                </View>
+              </View>
+              <View style={styles.actions}>
+                <View style={styles.actionRow}>
+                  <Button label="Add coins" onPress={() => setSheet('deposit')} />
+                  <Button label="Withdraw" kind="secondary" onPress={() => setSheet('withdraw')} />
+                </View>
+                <View style={styles.actionRow}>
+                  <Button
+                    label="Cash → coins"
+                    kind="secondary"
+                    onPress={() => setSheet('redeem')}
+                  />
+                  <Button
+                    label="Coins → cash"
+                    kind="secondary"
+                    onPress={() => setSheet('convert')}
+                  />
+                </View>
+              </View>
+              {sheet ? (
+                <MoneySheet key={sheet} kind={sheet} rules={rules} onDone={() => setSheet(null)} />
+              ) : null}
+            </Card>
+
+            {(withdrawals.data?.length ?? 0) > 0 ? (
+              <>
+                <SectionTitle>Cash-out requests</SectionTitle>
+                <Card>
+                  {withdrawals.data!.map((r, i) => (
+                    <View
+                      key={r.id}
+                      style={[
+                        styles.activity,
+                        i > 0 && {
+                          borderTopWidth: StyleSheet.hairlineWidth,
+                          borderColor: t.border,
+                        },
+                      ]}
+                    >
+                      <View>
+                        <Text style={{ color: t.text }}>
+                          {taka(r.amountBdt)} · {CHANNEL_LABELS[r.channel]}
+                        </Text>
+                        <Text style={{ color: t.muted, fontSize: 12 }}>
+                          {formatDay(r.createdAt)}
+                        </Text>
+                      </View>
+                      <Chip label={r.status} tone={WITHDRAWAL_TONES[r.status]} />
+                    </View>
+                  ))}
+                  <Text style={{ color: t.muted, fontSize: 12, marginTop: 8 }}>
+                    Rejected and failed requests put the held cash straight back on your balance.
+                  </Text>
+                </Card>
+              </>
+            ) : null}
+          </>
+        ) : null}
 
         <Card>
           <View style={styles.rowBetween}>
@@ -173,24 +306,289 @@ export default function WalletScreen() {
               </View>
               <Text
                 style={{
-                  color: a.bonus + a.winnings >= 0 ? t.accent : t.text,
+                  color: a.cash + a.bonus + a.winnings >= 0 ? t.accent : t.text,
                   fontWeight: '600',
                   fontVariant: ['tabular-nums'],
                 }}
               >
-                {a.bonus + a.winnings > 0 ? '+' : ''}
-                {(a.bonus + a.winnings).toLocaleString('en-US')}
+                {activityDelta(a)}
               </Text>
             </View>
           ))}
         </Card>
 
         <Text style={[styles.footnote, { color: t.muted }]}>
-          Coins have no cash value. They are never sold for money or paid out as money. Vouchers are
-          discounts at partner shops and travel companies, tied to your account.
+          {rules?.enabled
+            ? 'Coins bought with an e-wallet are entry money: they play tournaments but never become cash. Cash only comes from won coins, and every cash-out is reviewed by a person before it is sent to your wallet.'
+            : 'Coins have no cash value. They are never sold for money or paid out as money. Vouchers are discounts at partner shops and travel companies, tied to your account.'}
         </Text>
       </ScrollView>
     </Screen>
+  );
+}
+
+/** The taka and coin parts of an activity row, like "৳+1,000 · −60,000 coins". */
+function activityDelta(a: WalletActivity): string {
+  const coins = a.bonus + a.winnings;
+  const parts: string[] = [];
+  if (a.cash !== 0) parts.push(`${a.cash > 0 ? '+' : ''}${taka(a.cash)}`);
+  if (coins !== 0) parts.push(`${coins > 0 ? '+' : ''}${coins.toLocaleString('en-US')} coins`);
+  return parts.join(' · ') || '—';
+}
+
+/** The one open money form: buy coins, withdraw, redeem cash into coins, or convert coins. */
+function MoneySheet({
+  kind,
+  rules,
+  onDone,
+}: {
+  kind: MoneySheetKind;
+  rules: MoneyRules;
+  onDone: () => void;
+}) {
+  const t = useTheme();
+  const qc = useQueryClient();
+  const [amount, setAmount] = useState(kind === 'convert' ? '3000' : '500');
+  const [channel, setChannel] = useState<PayoutChannel>('bkash');
+  const [destination, setDestination] = useState('');
+  const [payment, setPayment] = useState<DepositInvoice | null>(null);
+  // One id per attempt, so a double tap or retry never moves money twice.
+  const attemptId = useRef(requestId());
+
+  const refresh = () => qc.invalidateQueries();
+  const friendly = (e: unknown) =>
+    e instanceof ApiError
+      ? e.code === 'not_verified'
+        ? 'Verify your ID first (see above).'
+        : (e.code !== undefined && REASONS[e.code]) || e.message
+      : undefined;
+  const intAmount = Number.parseInt(amount, 10);
+  const coins = Number.parseInt(amount, 10);
+
+  const depositSheet = kind === 'deposit';
+  const withdrawSheet = kind === 'withdraw';
+  const redeemSheet = kind === 'redeem';
+  const convertSheet = kind === 'convert';
+
+  const depositValid =
+    depositSheet && intAmount >= rules.deposit.minBdt && intAmount <= rules.deposit.maxBdt;
+  const withdrawValid =
+    withdrawSheet &&
+    intAmount >= rules.withdraw.minBdt &&
+    intAmount <= rules.withdraw.maxBdt &&
+    (channel === 'bank'
+      ? /^\d{6}[\d- ]{0,18}\d$/.test(destination.trim())
+      : /^01[3-9]\d{8}$/.test(destination.trim()));
+  const redeemValid = redeemSheet && intAmount >= rules.redeem.minBdt;
+  const convertValid =
+    convertSheet &&
+    coins > 0 &&
+    Math.floor(coins / rules.coinToCash.coinsPerBdt) >= rules.coinToCash.minBdt;
+
+  const depositMutation = useMutation({
+    mutationFn: () => api.deposit(intAmount, channel),
+    onSuccess: (invoice) => {
+      setPayment(invoice);
+      // The hosted checkout opens outside the app; the coins land once it confirms.
+      void Linking.openURL(invoice.paymentUrl).catch(() => undefined);
+      refresh();
+    },
+  });
+  const withdrawMutation = useMutation({
+    mutationFn: () =>
+      api.requestWithdrawal({
+        amountBdt: intAmount,
+        channel,
+        destination: destination.trim(),
+        requestId: attemptId.current,
+      }),
+    onSuccess: () => {
+      attemptId.current = requestId();
+      refresh();
+      onDone();
+    },
+  });
+  const redeemMutation = useMutation({
+    mutationFn: () => api.redeemCash(intAmount, attemptId.current),
+    onSuccess: () => {
+      attemptId.current = requestId();
+      refresh();
+      onDone();
+    },
+  });
+  const convertMutation = useMutation({
+    mutationFn: () => api.convertCoins(coins, attemptId.current),
+    onSuccess: () => {
+      attemptId.current = requestId();
+      refresh();
+      onDone();
+    },
+  });
+
+  const busy =
+    depositMutation.isPending ||
+    withdrawMutation.isPending ||
+    redeemMutation.isPending ||
+    convertMutation.isPending;
+  const error = friendly(
+    depositMutation.error ??
+      withdrawMutation.error ??
+      redeemMutation.error ??
+      convertMutation.error,
+  );
+
+  if (depositSheet && payment) {
+    return (
+      <View style={styles.sheet}>
+        <Text style={[styles.heading, { color: t.text }]}>Payment started</Text>
+        <Text style={{ color: t.muted, marginTop: 4 }}>
+          Finish paying {taka(payment.amountBdt)} in{' '}
+          {CHANNEL_LABELS[payment.channel as PayoutChannel]}. The{' '}
+          {payment.coins.toLocaleString('en-US')} coins land as soon as the gateway confirms — pull
+          to refresh after paying.
+        </Text>
+        <View style={styles.actionRow}>
+          <Button label="Done" kind="secondary" onPress={onDone} />
+        </View>
+      </View>
+    );
+  }
+
+  const redeemCoins = intAmount * rules.redeem.coinsPerBdt;
+
+  return (
+    <View style={styles.sheet}>
+      <Text style={[styles.heading, { color: t.text }]}>
+        {depositSheet
+          ? `Add coins — ${rules.deposit.coinsPerBdt} per taka`
+          : withdrawSheet
+            ? `Withdraw — ${taka(rules.withdraw.minBdt)} to ${taka(rules.withdraw.maxBdt)}`
+            : redeemSheet
+              ? `Cash → coins — ${rules.redeem.coinsPerBdt} per taka`
+              : `Coins → cash — ${rules.coinToCash.coinsPerBdt} coins per taka`}
+      </Text>
+
+      {withdrawSheet ? (
+        <>
+          <Segmented
+            options={(Object.keys(CHANNEL_LABELS) as PayoutChannel[]).map((c) => ({
+              value: c,
+              label: CHANNEL_LABELS[c],
+            }))}
+            value={channel}
+            onChange={setChannel}
+          />
+          <Text style={[styles.fieldLabel, { color: t.muted }]}>
+            {channel === 'bank'
+              ? 'Bank account number'
+              : `${CHANNEL_LABELS[channel]} wallet number`}
+          </Text>
+          <TextInput
+            style={[
+              styles.input,
+              { color: t.text, borderColor: t.border, backgroundColor: t.background },
+            ]}
+            value={destination}
+            onChangeText={(text) => setDestination(text.replace(/[^\d]/g, '').slice(0, 24))}
+            placeholder={channel === 'bank' ? 'e.g. 1520473390' : 'e.g. 01712345678'}
+            placeholderTextColor={t.muted}
+            keyboardType="number-pad"
+          />
+        </>
+      ) : null}
+
+      {depositSheet || redeemSheet || withdrawSheet ? (
+        <>
+          <Text style={[styles.fieldLabel, { color: t.muted }]}>
+            {depositSheet ? 'Pay (taka)' : withdrawSheet ? 'Cash out (taka)' : 'Redeem (taka)'}
+          </Text>
+          {depositSheet ? (
+            <Segmented
+              options={[20, 50, 100, 500, 1000].map((n) => ({
+                value: String(n),
+                label: String(n),
+              }))}
+              value={amount}
+              onChange={setAmount}
+            />
+          ) : null}
+          <TextInput
+            style={[
+              styles.input,
+              { color: t.text, borderColor: t.border, backgroundColor: t.background },
+            ]}
+            value={amount}
+            onChangeText={(text) => setAmount(text.replace(/\D/g, '').slice(0, 6))}
+            placeholder={String(
+              depositSheet
+                ? rules.deposit.minBdt
+                : redeemSheet
+                  ? rules.redeem.minBdt
+                  : rules.withdraw.minBdt,
+            )}
+            placeholderTextColor={t.muted}
+            keyboardType="number-pad"
+          />
+        </>
+      ) : null}
+
+      {convertSheet ? (
+        <>
+          <Text style={[styles.fieldLabel, { color: t.muted }]}>Won coins to convert</Text>
+          <TextInput
+            style={[
+              styles.input,
+              { color: t.text, borderColor: t.border, backgroundColor: t.background },
+            ]}
+            value={amount}
+            onChangeText={(text) => setAmount(text.replace(/\D/g, '').slice(0, 9))}
+            placeholder={`min ${rules.coinToCash.coinsPerBdt * rules.coinToCash.minBdt}`}
+            placeholderTextColor={t.muted}
+            keyboardType="number-pad"
+          />
+          <Text style={{ color: t.muted, fontSize: 12, marginTop: 4 }}>
+            Leftover coins stay winnings. Bonus coins cannot convert. Minimum{' '}
+            {taka(rules.coinToCash.minBdt)}.
+          </Text>
+        </>
+      ) : null}
+
+      <View style={styles.actionRow}>
+        {depositSheet ? (
+          <Button
+            label={`Pay with ${CHANNEL_LABELS[channel]}`}
+            disabled={!depositValid}
+            busy={depositMutation.isPending}
+            onPress={() => depositMutation.mutate()}
+          />
+        ) : withdrawSheet ? (
+          <Button
+            label="Request cash out"
+            disabled={!withdrawValid}
+            busy={busy}
+            onPress={() => withdrawMutation.mutate()}
+          />
+        ) : redeemSheet ? (
+          <Button
+            label={
+              redeemCoins > 0 ? `Redeem for ${redeemCoins.toLocaleString('en-US')} coins` : 'Redeem'
+            }
+            disabled={!redeemValid}
+            busy={busy}
+            onPress={() => redeemMutation.mutate()}
+          />
+        ) : (
+          <Button
+            label={`Convert to ${convertValid ? taka(Math.floor(coins / rules.coinToCash.coinsPerBdt)) : 'cash'}`}
+            disabled={!convertValid}
+            busy={busy}
+            onPress={() => convertMutation.mutate()}
+          />
+        )}
+        <Button label="Cancel" kind="secondary" onPress={onDone} />
+      </View>
+      {error ? <Text style={{ color: t.live, marginTop: 8 }}>{error}</Text> : null}
+    </View>
   );
 }
 
@@ -277,6 +675,24 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     paddingVertical: 8,
+  },
+  actions: { gap: 8, marginTop: 12 },
+  actionRow: { flexDirection: 'row', gap: 8 },
+  sheet: {
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: '#8884',
+    marginTop: 12,
+    paddingTop: 12,
+    gap: 8,
+  },
+  fieldLabel: { fontSize: 13, fontWeight: '600', textTransform: 'uppercase' },
+  input: {
+    borderWidth: 1,
+    borderRadius: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    fontSize: 18,
+    fontVariant: ['tabular-nums'],
   },
   code: {
     fontSize: 22,

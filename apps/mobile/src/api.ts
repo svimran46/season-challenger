@@ -88,6 +88,8 @@ export interface Wallet {
   winnings: number;
   total: number;
   redeemable: number;
+  /** Taka on the money side: comes from won coins, withdraws after an operator review. */
+  cash: number;
   checkIn: { today: string; checkedIn: boolean; streak: number; nextReward: number };
   verified: boolean;
 }
@@ -102,11 +104,66 @@ export interface WalletActivity {
     | 'entry_refund'
     | 'contest_settlement'
     | 'voucher_redemption'
-    | 'voucher_refund';
+    | 'voucher_refund'
+    | 'deposit'
+    | 'deposit_refund'
+    | 'redeem'
+    | 'coin_to_cash'
+    | 'withdraw_hold'
+    | 'withdraw_release'
+    | 'withdraw_paid';
   createdAt: string;
   bonus: number;
   winnings: number;
+  /** Taka for the money rows, 0 on the coin rows. */
+  cash: number;
   meta: Record<string, string | number>;
+}
+
+/** Rates and limits the app's money screen shows; mirrors /v1/me/money. */
+export interface MoneyRules {
+  enabled: boolean;
+  deposit: {
+    channels: string[];
+    minBdt: number;
+    maxBdt: number;
+    coinsPerBdt: number;
+    note: string;
+  };
+  redeem: { minBdt: number; coinsPerBdt: number; note: string };
+  coinToCash: { minBdt: number; coinsPerBdt: number; note: string };
+  withdraw: { channels: string[]; minBdt: number; maxBdt: number; note: string };
+}
+
+export interface MoneyOverview {
+  cash: number;
+  pendingWithdrawals: number;
+  openRequests: number;
+  verified: boolean;
+  rules: MoneyRules;
+}
+
+export interface DepositInvoice {
+  paymentId: string;
+  paymentUrl: string;
+  amountBdt: number;
+  coins: number;
+  channel: string;
+  gateway: string;
+  expiresAt: string;
+}
+
+export type PayoutChannel = 'bkash' | 'nagad' | 'rocket' | 'upay' | 'bank';
+
+export interface WithdrawalRequest {
+  id: string;
+  amountBdt: number;
+  channel: PayoutChannel;
+  destination: string;
+  status: 'pending' | 'approved' | 'rejected' | 'paid' | 'failed';
+  payoutReference: string | null;
+  reviewReason: string | null;
+  createdAt: string;
 }
 
 export type ContestFormat = 'head_to_head' | 'small_league' | 'mega' | 'private';
@@ -230,6 +287,30 @@ export const api = {
     ),
   verify: (birthDate: string, documentNumber: string) =>
     request<{ verified: true }>('/v1/me/verification', post({ birthDate, documentNumber })),
+
+  money: () => request<MoneyOverview>('/v1/me/money'),
+  deposit: (amountBdt: number, channel: PayoutChannel) =>
+    request<DepositInvoice>('/v1/me/deposits', post({ amountBdt, channel })),
+  myDeposits: () => request<DepositInvoice[]>('/v1/me/deposits'),
+  /** Cash → coins. */
+  redeemCash: (amountBdt: number, id: string) =>
+    request<{ amountBdt: number; coins: number; duplicate: boolean }>(
+      '/v1/me/redeem',
+      post({ amountBdt, requestId: id }),
+    ),
+  /** Won coins → cash. */
+  convertCoins: (coins: number, id: string) =>
+    request<{ coins: number; cashBdt: number; duplicate: boolean }>(
+      '/v1/me/convert',
+      post({ coins, requestId: id }),
+    ),
+  requestWithdrawal: (input: {
+    amountBdt: number;
+    channel: PayoutChannel;
+    destination: string;
+    requestId: string;
+  }) => request<WithdrawalRequest>('/v1/me/withdrawals', post(input)),
+  myWithdrawals: () => request<WithdrawalRequest[]>('/v1/me/withdrawals'),
 
   contests: (fixtureId: string) =>
     request<Contest[]>(`/v1/contests?fixtureId=${encodeURIComponent(fixtureId)}`),
