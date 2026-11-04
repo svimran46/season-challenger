@@ -1,4 +1,5 @@
 import { TIERS } from '@season/shared';
+import { useLocalSearchParams } from 'expo-router';
 import { useState } from 'react';
 import { ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
 import { useTheme } from '../theme';
@@ -59,6 +60,10 @@ export default function ShaderLab() {
   const t = useTheme();
   const [animate, setAnimate] = useState(true);
   const [tab, setTab] = useState<Tab>('design');
+  // Browsers cap WebGL contexts (about 16 per page), so the web preview can show a slice of the
+  // design set with ?from=&to=. Phones draw all of them.
+  const { from, to } = useLocalSearchParams<{ from?: string; to?: string }>();
+  const shown = DESIGN_SET.slice(Number(from ?? 0), to ? Number(to) : undefined);
   return (
     <ShaderMotion.Provider value={animate}>
       <ScrollView style={{ backgroundColor: t.background }} contentContainerStyle={styles.content}>
@@ -83,7 +88,7 @@ export default function ShaderLab() {
         </View>
 
         {tab === 'design' ? (
-          DESIGN_SET.map(([title, Design]) => (
+          shown.map(([title, Design]) => (
             <View key={title}>
               <SectionTitle>{title}</SectionTitle>
               <View style={styles.pad}>

@@ -62,7 +62,7 @@ uniform float3 glow;
 ${COMMON}
 half4 main(float2 xy) {
   float2 uv = xy / size;
-  float horizon = 0.5;
+  float horizon = 0.62;
   float3 col = mix(bg, glow * 0.35, pow(clamp(uv.y / horizon, 0.0, 1.0), 4.0));
   float star = step(0.992, hash(floor(xy / 3.0))) * step(uv.y, horizon - 0.05);
   col += star * 0.5 * (0.5 + 0.5 * sin(time * 2.0 + xy.x));

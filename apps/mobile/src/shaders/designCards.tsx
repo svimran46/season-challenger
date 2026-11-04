@@ -273,12 +273,14 @@ export function ProfileDesign() {
     <Panel
       effect={fx.eclipse}
       uniforms={{ bg: NAVY, ca: GREEN, cb: GOLD }}
-      style={{ height: 240, alignItems: 'center', justifyContent: 'center' }}
+      style={{ height: 280, alignItems: 'center', justifyContent: 'center' }}
     >
       <View style={s.avatar}>
         <Text style={s.avatarText}>MJ</Text>
       </View>
-      <Text style={[s.rowTitle, { marginTop: 70 }]}>Tactician · Season 2026/27</Text>
+      <Text style={[s.rowTitle, { position: 'absolute', bottom: 18 }]}>
+        Tactician · Season 2026/27
+      </Text>
     </Panel>
   );
 }
