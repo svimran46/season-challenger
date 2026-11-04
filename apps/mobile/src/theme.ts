@@ -1,31 +1,20 @@
-import { useColorScheme } from 'react-native';
-
-const light = {
-  background: '#f6f7f9',
-  surface: '#ffffff',
-  text: '#0f172a',
-  muted: '#64748b',
-  border: '#e2e8f0',
-  accent: '#16a34a',
-  accentText: '#ffffff',
-  live: '#dc2626',
-  todo: '#f59e0b',
+/** One look, night stadium: obsidian, ivory and champagne gold. The shaders are built around it. */
+const theme = {
+  background: '#07080b',
+  surface: 'rgba(15, 16, 21, 0.8)',
+  /** For bars and anything content scrolls under, where translucency would muddy the text. */
+  solid: '#0c0d12',
+  text: '#f6f2e9',
+  muted: '#aeaaa0',
+  border: 'rgba(217, 182, 106, 0.2)',
+  accent: '#dcb76c',
+  accentText: '#17110a',
+  live: '#ff6b5e',
+  todo: '#e8c98a',
 };
 
-const dark: typeof light = {
-  background: '#0b1120',
-  surface: '#111827',
-  text: '#f1f5f9',
-  muted: '#94a3b8',
-  border: '#1f2937',
-  accent: '#22c55e',
-  accentText: '#04130a',
-  live: '#f87171',
-  todo: '#fbbf24',
-};
-
-export type Theme = typeof light;
+export type Theme = typeof theme;
 
 export function useTheme(): Theme {
-  return useColorScheme() === 'dark' ? dark : light;
+  return theme;
 }

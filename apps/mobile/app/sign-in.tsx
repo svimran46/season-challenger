@@ -7,6 +7,7 @@ import { useAuth } from '../src/auth';
 import { googleSignInSupported, useGoogleSignIn } from '../src/google';
 import { GoogleSignInError } from '../src/google.types';
 import { codeRequestError, localNumber, looksValid } from '../src/phone';
+import { ShaderSurface } from '../src/shaders/ShaderSurface';
 import { useTheme } from '../src/theme';
 import { Button, Card, Loading, Screen } from '../src/ui';
 
@@ -62,9 +63,13 @@ export default function SignInScreen() {
 
   return (
     <Screen>
-      <ScrollView contentContainerStyle={{ paddingTop: 16 }} keyboardShouldPersistTaps="handled">
+      <ShaderSurface look="floodlight" />
+      <ScrollView contentContainerStyle={styles.hero} keyboardShouldPersistTaps="handled">
+        <View style={styles.brand}>
+          <Text style={[styles.kicker, { color: t.accent }]}>SEASON CHALLENGER</Text>
+          <Text style={[styles.tagline, { color: t.text }]}>Read the game.{'\n'}Prove it.</Text>
+        </View>
         <Card>
-          <Text style={[styles.heading, { color: t.text }]}>Welcome to Season Challenger</Text>
           {!google && !phone ? (
             <Text style={{ color: t.muted, lineHeight: 20 }}>
               Sign-in is not set up on this server yet. Please try again later.
@@ -194,6 +199,10 @@ function PhoneForm({ primary }: { primary: boolean }) {
 }
 
 const styles = StyleSheet.create({
+  hero: { flexGrow: 1, justifyContent: 'flex-end', paddingTop: 96, paddingBottom: 24 },
+  brand: { paddingHorizontal: 24, marginBottom: 20 },
+  kicker: { fontSize: 13, fontWeight: '700', letterSpacing: 2.4, marginBottom: 8 },
+  tagline: { fontSize: 38, lineHeight: 42, fontWeight: '800', letterSpacing: -0.5 },
   heading: { fontSize: 18, fontWeight: '700', marginBottom: 8 },
   label: { fontSize: 13, fontWeight: '600', marginTop: 16, marginBottom: 6 },
   divider: { flexDirection: 'row', alignItems: 'center', marginVertical: 20 },

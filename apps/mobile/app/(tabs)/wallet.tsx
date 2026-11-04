@@ -15,6 +15,7 @@ import { useTheme } from '../../src/theme';
 import {
   Button,
   Card,
+  MetalCard,
   Chip,
   Loading,
   Message,
@@ -79,24 +80,24 @@ export default function WalletScreen() {
         contentContainerStyle={styles.content}
         refreshControl={<RefreshControl refreshing={wallet.isRefetching} onRefresh={refreshAll} />}
       >
-        <Card>
-          <Text style={[styles.label, { color: t.muted }]}>Your coins</Text>
+        <MetalCard look="gold">
+          <Text style={[styles.label, { color: t.text }]}>Your coins</Text>
           <Text style={[styles.total, { color: t.text }]}>{w.total.toLocaleString('en-US')}</Text>
           <View style={styles.split}>
             <View style={styles.half}>
               <Text style={[styles.amount, { color: t.text }]}>
                 {w.bonus.toLocaleString('en-US')}
               </Text>
-              <Text style={{ color: t.muted }}>Bonus coins · entries only</Text>
+              <Text style={{ color: t.text }}>Bonus coins · entries only</Text>
             </View>
             <View style={styles.half}>
               <Text style={[styles.amount, { color: t.accent }]}>
                 {w.winnings.toLocaleString('en-US')}
               </Text>
-              <Text style={{ color: t.muted }}>Won coins · redeem for vouchers</Text>
+              <Text style={{ color: t.text }}>Won coins · redeem for vouchers</Text>
             </View>
           </View>
-        </Card>
+        </MetalCard>
 
         <Card>
           <View style={styles.rowBetween}>

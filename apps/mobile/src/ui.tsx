@@ -1,10 +1,12 @@
-import type { ReactNode } from 'react';
+import { useFocusEffect } from 'expo-router';
+import { useCallback, useState, type ReactNode } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
+import { ShaderSurface } from './shaders/ShaderSurface';
+import type { LookName } from './shaders/looks';
 import { useTheme } from './theme';
 
 export function Screen({ children }: { children: ReactNode }) {
-  const t = useTheme();
-  return <View style={[styles.screen, { backgroundColor: t.background }]}>{children}</View>;
+  return <View style={styles.screen}>{children}</View>;
 }
 
 export function Card({ children }: { children: ReactNode }) {
@@ -12,6 +14,25 @@ export function Card({ children }: { children: ReactNode }) {
   return (
     <View style={[styles.card, { backgroundColor: t.surface, borderColor: t.border }]}>
       {children}
+    </View>
+  );
+}
+
+/** A headline card cast in liquid metal. The veil keeps text readable over its highlights. */
+export function MetalCard({ look, children }: { look: LookName; children: ReactNode }) {
+  const t = useTheme();
+  const [focused, setFocused] = useState(true);
+  useFocusEffect(
+    useCallback(() => {
+      setFocused(true);
+      return () => setFocused(false);
+    }, []),
+  );
+  return (
+    <View style={[styles.metal, { borderColor: t.border }]}>
+      <ShaderSurface look={look} animated={focused} />
+      <View style={styles.veil} />
+      <View style={styles.metalBody}>{children}</View>
     </View>
   );
 }
@@ -129,6 +150,16 @@ export function SectionTitle({ children }: { children: ReactNode }) {
 }
 
 const styles = StyleSheet.create({
+  metal: {
+    borderWidth: 1,
+    borderRadius: 16,
+    overflow: 'hidden',
+    marginHorizontal: 16,
+    marginBottom: 12,
+    backgroundColor: '#14100a',
+  },
+  veil: { ...StyleSheet.absoluteFill, backgroundColor: 'rgba(5, 5, 7, 0.58)' },
+  metalBody: { padding: 18 },
   button: {
     borderWidth: 1,
     borderRadius: 10,

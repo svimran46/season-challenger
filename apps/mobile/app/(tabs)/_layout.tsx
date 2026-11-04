@@ -15,9 +15,12 @@ export default function TabsLayout() {
       screenOptions={{
         tabBarActiveTintColor: t.accent,
         tabBarInactiveTintColor: t.muted,
-        tabBarStyle: { backgroundColor: t.surface, borderTopColor: t.border },
-        headerStyle: { backgroundColor: t.surface },
+        tabBarLabelStyle: { lineHeight: 16 },
+        tabBarStyle: { backgroundColor: t.solid, borderTopColor: t.border },
+        headerStyle: { backgroundColor: t.solid },
         headerTintColor: t.text,
+        headerShadowVisible: false,
+        sceneStyle: { backgroundColor: 'transparent' },
       }}
     >
       <Tabs.Screen name="index" options={{ title: 'Matches', tabBarIcon: icon('⚽') }} />

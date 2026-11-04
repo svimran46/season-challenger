@@ -4,7 +4,8 @@ import { Link } from 'expo-router';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { api } from '../../src/api';
 import { useTheme } from '../../src/theme';
-import { Card, Chip, Loading, Message, Screen } from '../../src/ui';
+import type { LookName } from '../../src/shaders/looks';
+import { Card, Chip, Loading, MetalCard, Message, Screen } from '../../src/ui';
 
 export default function MasteryScreen() {
   const t = useTheme();
@@ -18,9 +19,9 @@ export default function MasteryScreen() {
   return (
     <Screen>
       <ScrollView contentContainerStyle={styles.content}>
-        <Card>
+        <MetalCard look={tier as LookName}>
           <View style={styles.spread}>
-            <Text style={[styles.label, { color: t.muted }]}>Season rating</Text>
+            <Text style={[styles.label, { color: t.text }]}>Season rating</Text>
             <Chip label={tier} tone="done" />
           </View>
           <Text style={[styles.rating, { color: t.text }]}>{Math.round(rating)}</Text>
@@ -34,20 +35,20 @@ export default function MasteryScreen() {
                   ]}
                 />
               </View>
-              <Text style={{ color: t.muted }}>
+              <Text style={{ color: t.text }}>
                 {next.next} needs rating {next.rating.need} and {next.cards.need} cards. You have{' '}
                 {cardsCompleted}.
               </Text>
             </>
           ) : (
-            <Text style={{ color: t.muted }}>You hold the top tier.</Text>
+            <Text style={{ color: t.text }}>You hold the top tier.</Text>
           )}
           {cardsCompleted < cardsForLeaderboard ? (
-            <Text style={[styles.note, { color: t.muted }]}>
+            <Text style={[styles.note, { color: t.text }]}>
               {cardsCompleted} of {cardsForLeaderboard} cards needed to join the season leaderboard.
             </Text>
           ) : null}
-        </Card>
+        </MetalCard>
 
         <Card>
           <Text style={[styles.heading, { color: t.text }]}>Your matches</Text>
