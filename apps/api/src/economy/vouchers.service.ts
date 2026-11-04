@@ -1,25 +1,35 @@
 import { ConflictException, Inject, Injectable, NotFoundException } from '@nestjs/common';
 import {
   describeDiscount,
-  dhakaMonth,
+  dhakaDate,
   generateVoucherCode,
   redemptionBlocker,
   userAccount,
   voucherRedemption,
   voucherStatus,
   type LedgerStore,
+  type LedgerUnitOfWork,
   type VoucherCategory,
   type VoucherOffer,
 } from '@season/wallet';
-import { CLOCK, ECONOMY_STORES, LEDGER_STORE, type Clock } from '../common/tokens';
-import type { EconomyStores, VoucherRecord } from './stores';
+import { CLOCK, ECONOMY_REPOSITORY, LEDGER_STORE, type Clock } from '../common/tokens';
+import type { EconomyRepository, VoucherRecord } from './stores';
 import { userAccounts, WalletService } from './wallet.service';
+
+/** What a player has redeemed this month, as the redemption rules count it. */
+function usageOf(mine: readonly VoucherRecord[], offerId: string) {
+  return {
+    coinsThisMonth: mine.reduce((sum, v) => sum + v.costCoins, 0),
+    vouchersThisMonth: mine.length,
+    thisOfferThisMonth: mine.filter((v) => v.offerId === offerId).length,
+  };
+}
 
 @Injectable()
 export class VouchersService {
   constructor(
     @Inject(LEDGER_STORE) private readonly ledger: LedgerStore,
-    @Inject(ECONOMY_STORES) private readonly stores: EconomyStores,
+    @Inject(ECONOMY_REPOSITORY) private readonly repo: EconomyRepository,
     @Inject(CLOCK) private readonly clock: Clock,
     @Inject(WalletService) private readonly wallet: WalletService,
   ) {}
@@ -27,7 +37,7 @@ export class VouchersService {
   /** Offers on show now. With a signed-in player, each says whether they can redeem it. */
   async offers(category?: VoucherCategory, userId?: string) {
     const now = this.clock();
-    const offers = [...this.stores.offers.values()].filter(
+    const offers = (await this.repo.listOffers()).filter(
       (o) =>
         o.active &&
         (!category || o.category === category) &&
@@ -36,6 +46,7 @@ export class VouchersService {
     );
     const profile = userId ? await this.wallet.ensurePlayer(userId) : undefined;
     const reader = profile ? await this.reader(profile.id) : undefined;
+    const mine = profile ? await this.thisMonth(profile.id) : [];
     return offers
       .sort((a, b) => a.costCoins - b.costCoins)
       .map((o) => {
@@ -44,7 +55,7 @@ export class VouchersService {
             ? redemptionBlocker(reader, {
                 offer: o,
                 redeemer: { ...profile, userId: profile.id },
-                usage: this.usage(profile.id, o.id),
+                usage: usageOf(mine, o.id),
                 now,
               })
             : null;
@@ -61,10 +72,15 @@ export class VouchersService {
    */
   async redeem(userId: string, offerId: string, requestId: string) {
     const profile = await this.wallet.ensurePlayer(userId);
-    const offer = this.stores.offers.get(offerId);
-    if (!offer) throw new NotFoundException(`Offer ${offerId} not found`);
+    if (!(await this.repo.getOffer(offerId))) {
+      throw new NotFoundException(`Offer ${offerId} not found`);
+    }
     return this.ledger.transact(async (uow) => {
-      const existing = this.stores.vouchers.get(requestId);
+      // Lock order: the offer row (stock), then ledger accounts. Retries of one request queue on
+      // the offer lock, so the second one finds the voucher the first one issued.
+      const offer = await this.repo.getOffer(offerId, uow, { lock: true });
+      if (!offer) throw new NotFoundException(`Offer ${offerId} not found`);
+      const existing = await this.repo.getVoucher(requestId, uow);
       if (existing) {
         if (existing.userId !== userId || existing.offerId !== offerId) {
           throw new ConflictException({
@@ -77,43 +93,36 @@ export class VouchersService {
       const reader = await uow.lock(userAccounts(userId), [`voucher:${requestId}`]);
       const { draft, voucher } = voucherRedemption(reader, {
         redemptionId: requestId,
-        code: this.uniqueCode(),
+        code: await this.uniqueCode(uow),
         offer,
         redeemer: { ...profile, userId: profile.id },
-        usage: this.usage(userId, offerId),
+        usage: usageOf(await this.thisMonth(userId, uow), offerId),
         now: this.clock(),
       });
-      await uow.post(draft);
-      if (offer.stock !== null) offer.stock -= 1;
+      const txn = await uow.post(draft);
+      if (offer.stock !== null) await this.repo.decrementStock(offerId, uow);
       const record: VoucherRecord = {
         ...voucher,
         usedAt: null,
         usedReference: null,
         cancelledAt: null,
+        redemptionTxnId: txn.id,
       };
-      this.stores.vouchers.set(record.id, record);
+      await this.repo.insertVoucher(record, uow);
       return this.voucherView(record);
     });
   }
 
   async myVouchers(userId: string) {
     await this.wallet.ensurePlayer(userId);
-    return [...this.stores.vouchers.values()]
-      .filter((v) => v.userId === userId)
-      .sort((a, b) => b.issuedAt.localeCompare(a.issuedAt))
-      .map((v) => this.voucherView(v));
+    return (await this.repo.vouchersOfUser(userId)).map((v) => this.voucherView(v));
   }
 
-  private usage(userId: string, offerId: string) {
-    const month = dhakaMonth(this.clock());
-    const mine = [...this.stores.vouchers.values()].filter(
-      (v) => v.userId === userId && !v.cancelledAt && dhakaMonth(new Date(v.issuedAt)) === month,
-    );
-    return {
-      coinsThisMonth: mine.reduce((sum, v) => sum + v.costCoins, 0),
-      vouchersThisMonth: mine.length,
-      thisOfferThisMonth: mine.filter((v) => v.offerId === offerId).length,
-    };
+  /** The player's vouchers issued this Dhaka calendar month, cancelled ones left out. */
+  private async thisMonth(userId: string, uow?: LedgerUnitOfWork) {
+    const monthStart = new Date(`${dhakaDate(this.clock()).slice(0, 8)}01T00:00:00+06:00`);
+    const issued = await this.repo.vouchersOfUser(userId, { since: monthStart.toISOString() }, uow);
+    return issued.filter((v) => !v.cancelledAt);
   }
 
   private async reader(userId: string) {
@@ -124,11 +133,10 @@ export class VouchersService {
     };
   }
 
-  private uniqueCode(): string {
-    const taken = new Set([...this.stores.vouchers.values()].map((v) => v.code));
+  private async uniqueCode(uow: LedgerUnitOfWork): Promise<string> {
     for (;;) {
       const code = generateVoucherCode();
-      if (!taken.has(code)) return code;
+      if (!(await this.repo.voucherCodeTaken(code, uow))) return code;
     }
   }
 

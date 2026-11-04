@@ -2,6 +2,7 @@ import {
   ConflictException,
   Inject,
   Injectable,
+  Logger,
   NotFoundException,
   UnprocessableEntityException,
 } from '@nestjs/common';
@@ -16,10 +17,17 @@ import {
   FORMAT_RULES,
   type ContestFormat,
   type LedgerStore,
+  type LedgerUnitOfWork,
 } from '@season/wallet';
 import { randomBytes } from 'node:crypto';
-import { CLOCK, ECONOMY_STORES, FOOTBALL_FEED, LEDGER_STORE, type Clock } from '../common/tokens';
-import type { ContestRecord, EconomyStores, EntryRecord } from './stores';
+import {
+  CLOCK,
+  ECONOMY_REPOSITORY,
+  FOOTBALL_FEED,
+  LEDGER_STORE,
+  type Clock,
+} from '../common/tokens';
+import type { ContestRecord, EconomyRepository, EntryRecord } from './stores';
 import { userAccounts, WalletService } from './wallet.service';
 
 /** The public tournaments every upcoming match gets. A full one is replaced by a fresh copy. */
@@ -45,9 +53,11 @@ const INVITE_ALPHABET = '23456789ABCDEFGHJKMNPQRSTUVWXYZ';
 
 @Injectable()
 export class ContestsService {
+  private readonly logger = new Logger(ContestsService.name);
+
   constructor(
     @Inject(LEDGER_STORE) private readonly ledger: LedgerStore,
-    @Inject(ECONOMY_STORES) private readonly stores: EconomyStores,
+    @Inject(ECONOMY_REPOSITORY) private readonly repo: EconomyRepository,
     @Inject(FOOTBALL_FEED) private readonly feed: FootballFeed,
     @Inject(CLOCK) private readonly clock: Clock,
     @Inject(WalletService) private readonly wallet: WalletService,
@@ -56,19 +66,23 @@ export class ContestsService {
   async listForFixture(fixtureId: string) {
     const fixture = await this.feed.getFixture(fixtureId);
     if (!fixture) throw new NotFoundException(`Fixture ${fixtureId} not found`);
-    await this.refresh();
-    if (fixture.status === 'scheduled') this.seedPublic(fixtureId);
-    return [...this.stores.contests.values()]
-      .filter((c) => c.fixtureId === fixtureId && !c.inviteOnly)
-      .filter((c) => c.status !== 'cancelled')
-      .sort((a, b) => templateOrder(a) - templateOrder(b))
+    await this.refreshForRead();
+    if (fixture.status === 'scheduled') await this.seedPublic(fixtureId);
+    return (await this.repo.listContests({ fixtureId }))
+      .filter((c) => !c.inviteOnly && c.status !== 'cancelled')
+      .sort(
+        (a, b) =>
+          templateOrder(a) - templateOrder(b) ||
+          a.createdAt.localeCompare(b.createdAt) ||
+          a.id.localeCompare(b.id),
+      )
       .map((c) => this.summary(c));
   }
 
   async get(contestId: string, viewerId?: string) {
-    await this.refresh();
-    const contest = this.find(contestId);
-    const entries = this.stores.entriesFor(contestId);
+    await this.refreshForRead();
+    const contest = await this.find(contestId);
+    const entries = await this.repo.entriesFor(contestId);
     const leaderboard =
       contest.status === 'open'
         ? []
@@ -84,9 +98,7 @@ export class ContestsService {
   }
 
   async byInviteCode(code: string) {
-    const contest = [...this.stores.contests.values()].find(
-      (c) => c.inviteCode === code.toUpperCase(),
-    );
+    const contest = await this.repo.contestByInviteCode(code.toUpperCase());
     if (!contest) throw new NotFoundException('No tournament has that invite code.');
     return this.get(contest.id);
   }
@@ -113,32 +125,33 @@ export class ContestsService {
       fixtureId: input.fixtureId,
       name: input.name,
       status: 'open',
-      inviteCode: this.uniqueInviteCode(),
+      inviteCode: await this.uniqueInviteCode(),
       createdBy: userId,
       templateKey: null,
+      entryCount: 0,
       createdAt: this.clock().toISOString(),
       settledAt: null,
     };
-    this.stores.contests.set(id, record);
+    await this.repo.insertContest(record);
     return this.summary(record, userId);
   }
 
   /** Pays the entry fee in coins and enters the squad. One entry per player per tournament. */
   async join(userId: string, contestId: string, squad: Omit<SquadPick, 'fixtureId'>) {
     await this.wallet.ensurePlayer(userId);
-    await this.refresh();
-    const contest = this.find(contestId);
-    if (contest.status !== 'open') {
+    await this.refreshForRead();
+    const found = await this.find(contestId);
+    if (found.status !== 'open') {
       throw new ConflictException({ error: 'contest_closed', message: 'Entries are closed.' });
     }
-    const fixture = await this.feed.getFixture(contest.fixtureId);
+    const fixture = await this.feed.getFixture(found.fixtureId);
     if (!fixture || fixture.status !== 'scheduled') {
       throw new ConflictException({
         error: 'contest_closed',
         message: 'This match has kicked off.',
       });
     }
-    const pick: SquadPick = { ...squad, fixtureId: contest.fixtureId };
+    const pick: SquadPick = { ...squad, fixtureId: found.fixtureId };
     const players = await this.feed.listPlayers([fixture.homeClubId, fixture.awayClubId]);
     const check = validateSquad(pick, players);
     if (!check.valid) {
@@ -151,15 +164,20 @@ export class ContestsService {
 
     const entryId = `${contestId}:${userId}`;
     return this.ledger.transact(async (uow) => {
-      const existing = this.stores.entries.get(entryId);
-      if (existing) {
+      // Lock order everywhere: the contest row first, then ledger accounts.
+      const contest = await this.repo.getContest(contestId, uow, { lock: true });
+      if (!contest) throw new NotFoundException(`Tournament ${contestId} not found`);
+      if (contest.status !== 'open') {
+        throw new ConflictException({ error: 'contest_closed', message: 'Entries are closed.' });
+      }
+      if (await this.repo.getEntry(entryId, uow)) {
         throw new ConflictException({
           error: 'already_joined',
           message: 'You are already in this tournament.',
         });
       }
       const reader = await uow.lock(userAccounts(userId));
-      const entries = this.stores.entriesFor(contestId).length;
+      const entries = contest.entryCount;
       const txn = await uow.post(
         contestEntry(reader, contest, { entryId, userId, currentEntries: entries }),
       );
@@ -174,9 +192,10 @@ export class ContestsService {
         prize: null,
         joinedAt: this.clock().toISOString(),
       };
-      this.stores.entries.set(entryId, entry);
-      if (entries + 1 === contest.capacity && contest.templateKey) {
-        this.spawn(contest.fixtureId, contest.templateKey);
+      await this.repo.insertEntry(entry, uow);
+      contest.entryCount = entries + 1;
+      if (contest.entryCount === contest.capacity && contest.templateKey) {
+        await this.spawn(contest.fixtureId, contest.templateKey, uow);
       }
       return { entryId, contest: this.summary(contest, userId) };
     });
@@ -184,16 +203,16 @@ export class ContestsService {
 
   async myEntries(userId: string) {
     await this.wallet.ensurePlayer(userId);
-    await this.refresh();
-    const mine = [...this.stores.entries.values()]
-      .filter((e) => e.userId === userId)
-      .sort((a, b) => b.joinedAt.localeCompare(a.joinedAt));
+    await this.refreshForRead();
+    const mine = await this.repo.entriesOfUser(userId);
     const clubs = new Map((await this.feed.listClubs()).map((c) => [c.id, c]));
     const fixtures = new Map<string, Awaited<ReturnType<FootballFeed['getFixture']>>>();
+    const contests = new Map<string, ContestRecord>();
     for (const e of mine) {
       if (!fixtures.has(e.squad.fixtureId)) {
         fixtures.set(e.squad.fixtureId, await this.feed.getFixture(e.squad.fixtureId));
       }
+      if (!contests.has(e.contestId)) contests.set(e.contestId, await this.find(e.contestId));
     }
     return mine.map((e) => {
       const f = fixtures.get(e.squad.fixtureId);
@@ -210,7 +229,7 @@ export class ContestsService {
           home: clubs.get(f.homeClubId)?.shortName ?? f.homeClubId,
           away: clubs.get(f.awayClubId)?.shortName ?? f.awayClubId,
         },
-        contest: this.summary(this.find(e.contestId), userId),
+        contest: this.summary(contests.get(e.contestId)!, userId),
       };
     });
   }
@@ -218,20 +237,31 @@ export class ContestsService {
   /**
    * Moves tournaments along with their match: at kick-off one that has too few entries is
    * cancelled and refunded, otherwise it locks; once the match is final it is scored and paid.
-   * Called on reads here; a scheduled worker runs it in production.
+   * Runs on reads and on the worker's timer. Each tournament is handled in its own transaction
+   * under a row lock, so overlapping runs (or API instances) cannot process one twice.
    */
+  /**
+   * Reads bring tournaments up to date first, but a failure there (a lock timeout, a feed
+   * outage) must not fail an unrelated read: the worker retries it on its next tick.
+   */
+  private async refreshForRead() {
+    try {
+      await this.refresh();
+    } catch (error) {
+      this.logger.warn(`Tournament refresh failed on a read: ${String(error)}`);
+    }
+  }
+
   async refresh(): Promise<void> {
     const byFixture = new Map<string, ContestRecord[]>();
-    for (const c of this.stores.contests.values()) {
-      if (c.status === 'open' || c.status === 'locked') {
-        byFixture.set(c.fixtureId, [...(byFixture.get(c.fixtureId) ?? []), c]);
-      }
+    for (const c of await this.repo.listContests({ statuses: ['open', 'locked'] })) {
+      byFixture.set(c.fixtureId, [...(byFixture.get(c.fixtureId) ?? []), c]);
     }
     for (const [fixtureId, contests] of byFixture) {
       const fixture = await this.feed.getFixture(fixtureId);
       if (!fixture || fixture.status === 'scheduled') continue;
       for (const contest of contests) {
-        if (contest.status === 'open') await this.lockOrCancel(contest);
+        if (contest.status === 'open') contest.status = await this.lockOrCancel(contest.id);
       }
       if (fixture.status !== 'finished') continue;
       const stats = await this.feed.getStats(fixtureId);
@@ -247,76 +277,88 @@ export class ContestsService {
         minutes.set(s.playerId, s.minutes);
       }
       for (const contest of contests) {
-        if (contest.status === 'locked') await this.settle(contest, points, minutes);
+        if (contest.status === 'locked') await this.settle(contest.id, points, minutes);
       }
     }
   }
 
-  private async lockOrCancel(contest: ContestRecord) {
-    const entries = this.stores.entriesFor(contest.id);
-    if (entries.length >= contest.minEntries) {
-      contest.status = 'locked';
-      return;
-    }
-    await this.ledger.transact(async (uow) => {
-      for (const e of entries) {
-        const entryTxn = await this.ledgerTxn(`entry:${e.id}`);
-        await uow.lock([...userAccounts(e.userId), contestPool(contest.id)]);
+  /** Returns the tournament's status after the run. */
+  private async lockOrCancel(contestId: string): Promise<ContestRecord['status']> {
+    return this.ledger.transact(async (uow) => {
+      const contest = await this.repo.getContest(contestId, uow, { lock: true });
+      if (!contest) throw new Error(`Tournament ${contestId} vanished.`);
+      if (contest.status !== 'open') return contest.status;
+      const entries = await this.repo.entriesFor(contestId, uow);
+      if (entries.length >= contest.minEntries) {
+        await this.repo.updateContest(contestId, { status: 'locked' }, uow);
+        return 'locked';
+      }
+      // Lock every account at once (sorted by the store) so a refund cannot deadlock with a
+      // settlement taking the same players' accounts.
+      const keys = entries.map((e) => `entry:${e.id}`);
+      const reader = await uow.lock(
+        [contestPool(contestId), ...entries.flatMap((e) => userAccounts(e.userId))],
+        keys,
+      );
+      for (const key of keys) {
+        const entryTxn = reader.findByKey(key);
+        if (!entryTxn) throw new Error(`Missing ledger transaction ${key}.`);
         await uow.post(entryRefund(entryTxn));
       }
-      contest.status = 'cancelled';
+      await this.repo.updateContest(contestId, { status: 'cancelled' }, uow);
+      return 'cancelled';
     });
   }
 
   private async settle(
-    contest: ContestRecord,
+    contestId: string,
     points: ReadonlyMap<string, number>,
     minutes: ReadonlyMap<string, number>,
   ) {
-    const entries = this.stores.entriesFor(contest.id);
-    const results = entries.map((e) => ({
-      entryId: e.id,
-      userId: e.userId,
-      points: scoreSquad(e.squad, points, minutes),
-    }));
     await this.ledger.transact(async (uow) => {
+      const contest = await this.repo.getContest(contestId, uow, { lock: true });
+      if (!contest || contest.status !== 'locked') return;
+      const entries = await this.repo.entriesFor(contestId, uow);
+      const results = entries.map((e) => ({
+        entryId: e.id,
+        userId: e.userId,
+        points: scoreSquad(e.squad, points, minutes),
+      }));
       const reader = await uow.lock(
-        [contestPool(contest.id), ...entries.flatMap((e) => userAccounts(e.userId))],
-        [`settle:${contest.id}`],
+        [contestPool(contestId), ...entries.flatMap((e) => userAccounts(e.userId))],
+        [`settle:${contestId}`],
       );
       const { draft, payouts } = contestSettlement(reader, contest, results);
       await uow.post(draft);
       for (const p of payouts) {
-        const entry = this.stores.entries.get(p.entryId)!;
-        entry.points = p.points;
-        entry.rank = p.rank;
-        entry.prize = p.prize;
+        await this.repo.recordResult(
+          p.entryId,
+          { points: p.points, rank: p.rank, prize: p.prize },
+          uow,
+        );
       }
-      contest.status = 'settled';
-      contest.settledAt = this.clock().toISOString();
+      await this.repo.updateContest(
+        contestId,
+        { status: 'settled', settledAt: this.clock().toISOString() },
+        uow,
+      );
     });
   }
 
-  private async ledgerTxn(key: string) {
-    const txn = await this.ledger.findByKey(key);
-    if (!txn) throw new Error(`Missing ledger transaction ${key}.`);
-    return txn;
-  }
-
-  private seedPublic(fixtureId: string) {
+  private async seedPublic(fixtureId: string) {
+    const open = await this.repo.listContests({ fixtureId, statuses: ['open'] });
     for (const t of PUBLIC_TEMPLATES) {
-      const open = [...this.stores.contests.values()].some(
-        (c) => c.fixtureId === fixtureId && c.templateKey === t.key && c.status === 'open',
-      );
-      if (!open) this.spawn(fixtureId, t.key);
+      if (!open.some((c) => c.templateKey === t.key)) await this.spawn(fixtureId, t.key);
     }
   }
 
-  private spawn(fixtureId: string, templateKey: string) {
+  /**
+   * Adds the next copy of a public tournament. Ids are deterministic and the insert skips an
+   * existing id, so two requests seeding at once create one copy, not two.
+   */
+  private async spawn(fixtureId: string, templateKey: string, uow?: LedgerUnitOfWork) {
     const t = PUBLIC_TEMPLATES.find((p) => p.key === templateKey)!;
-    const copies = [...this.stores.contests.values()].filter(
-      (c) => c.fixtureId === fixtureId && c.templateKey === t.key,
-    ).length;
+    const copies = (await this.repo.listContests({ fixtureId, templateKey: t.key }, uow)).length;
     const id = `${fixtureId}~${t.key}~${copies + 1}`;
     const setup = contestSetup({
       id,
@@ -324,28 +366,32 @@ export class ContestsService {
       entryFee: t.entryFee,
       capacity: t.capacity,
     });
-    this.stores.contests.set(id, {
-      ...setup,
-      fixtureId,
-      name: t.name,
-      status: 'open',
-      inviteCode: null,
-      createdBy: null,
-      templateKey: t.key,
-      createdAt: this.clock().toISOString(),
-      settledAt: null,
-    });
+    await this.repo.insertContest(
+      {
+        ...setup,
+        fixtureId,
+        name: t.name,
+        status: 'open',
+        inviteCode: null,
+        createdBy: null,
+        templateKey: t.key,
+        entryCount: 0,
+        createdAt: this.clock().toISOString(),
+        settledAt: null,
+      },
+      uow,
+    );
   }
 
-  private find(contestId: string): ContestRecord {
-    const contest = this.stores.contests.get(contestId);
+  private async find(contestId: string): Promise<ContestRecord> {
+    const contest = await this.repo.getContest(contestId);
     if (!contest) throw new NotFoundException(`Tournament ${contestId} not found`);
     return contest;
   }
 
   /** The invite code is shown to the tournament's creator only. */
   private summary(c: ContestRecord, viewerId?: string) {
-    const entries = this.stores.entriesFor(c.id).length;
+    const entries = c.entryCount;
     const rules = FORMAT_RULES[c.format];
     return {
       id: c.id,
@@ -375,11 +421,10 @@ export class ContestsService {
     return out;
   }
 
-  private uniqueInviteCode(): string {
-    const taken = new Set([...this.stores.contests.values()].map((c) => c.inviteCode));
+  private async uniqueInviteCode(): Promise<string> {
     for (;;) {
       const code = this.code(6);
-      if (!taken.has(code)) return code;
+      if (!(await this.repo.inviteCodeTaken(code))) return code;
     }
   }
 }

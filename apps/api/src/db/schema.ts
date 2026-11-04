@@ -149,10 +149,12 @@ export const playerMatchPoints = pgTable(
 // ---------------------------------------------------------------- users
 
 export const appUser = pgTable('app_user', {
-  id: uuid('id').primaryKey().defaultRandom(),
+  /** Our player id. In development it is the x-user-id header value. */
+  id: text('id').primaryKey(),
   /** Subject id from the managed auth provider. */
   authId: text('auth_id').notNull().unique(),
-  displayName: text('display_name').notNull(),
+  /** Chosen by the player after sign-up. */
+  displayName: text('display_name'),
   favouriteClubId: text('favourite_club_id').references(() => club.id),
   /** Self-declared at sign-up (18+ only); replaced by the ID document's date once verified. */
   birthDate: date('birth_date'),
@@ -171,7 +173,7 @@ export const squad = pgTable(
   'squad',
   {
     id: uuid('id').primaryKey().defaultRandom(),
-    userId: uuid('user_id')
+    userId: text('user_id')
       .notNull()
       .references(() => appUser.id),
     fixtureId: text('fixture_id')
@@ -209,7 +211,8 @@ export const squadPlayer = pgTable(
 export const contest = pgTable(
   'contest',
   {
-    id: uuid('id').primaryKey().defaultRandom(),
+    /** <fixture>~<template>~<copy> for public tournaments, <fixture>~private~<code> otherwise. */
+    id: text('id').primaryKey(),
     fixtureId: text('fixture_id')
       .notNull()
       .references(() => fixture.id),
@@ -218,7 +221,9 @@ export const contest = pgTable(
     status: contestStatusEnum('status').notNull().default('open'),
     /** Private tournaments only. */
     inviteCode: text('invite_code').unique(),
-    createdBy: uuid('created_by').references(() => appUser.id),
+    createdBy: text('created_by').references(() => appUser.id),
+    /** Public tournaments: the template a full one is copied from. */
+    templateKey: text('template_key'),
     entryFee: integer('entry_fee').notNull(),
     capacity: integer('capacity').notNull(),
     minEntries: integer('min_entries').notNull(),
@@ -248,17 +253,17 @@ export const contest = pgTable(
 export const contestEntry = pgTable(
   'contest_entry',
   {
-    /** Also the ledger idempotency key (entry:<id>), so a retried join cannot pay twice. */
-    id: uuid('id').primaryKey().defaultRandom(),
-    contestId: uuid('contest_id')
+    /** <contest>:<user>, also the ledger key (entry:<id>), so a retried join cannot pay twice. */
+    id: text('id').primaryKey(),
+    contestId: text('contest_id')
       .notNull()
       .references(() => contest.id),
-    userId: uuid('user_id')
+    userId: text('user_id')
       .notNull()
       .references(() => appUser.id),
-    squadId: uuid('squad_id')
-      .notNull()
-      .references(() => squad.id),
+    /** The SquadPick entered, frozen at entry. */
+    squad: jsonb('squad').notNull(),
+    squadId: uuid('squad_id').references(() => squad.id),
     entryTxnId: uuid('entry_txn_id')
       .notNull()
       .references(() => ledgerTransaction.id),
@@ -323,7 +328,7 @@ export const ledgerBalance = pgTable(
 export const dailyCheckIn = pgTable(
   'daily_check_in',
   {
-    userId: uuid('user_id')
+    userId: text('user_id')
       .notNull()
       .references(() => appUser.id),
     localDate: date('local_date').notNull(),
@@ -384,7 +389,7 @@ export const voucher = pgTable(
     /** The redemption id; the ledger key is voucher:<id>. */
     id: uuid('id').primaryKey().defaultRandom(),
     code: text('code').notNull().unique(),
-    userId: uuid('user_id')
+    userId: text('user_id')
       .notNull()
       .references(() => appUser.id),
     offerId: text('offer_id')
@@ -393,8 +398,10 @@ export const voucher = pgTable(
     partnerId: text('partner_id')
       .notNull()
       .references(() => voucherPartner.id),
+    partnerName: text('partner_name').notNull(),
+    category: voucherCategoryEnum('category').notNull(),
     title: text('title').notNull(),
-    /** Snapshot of the offer's discount when issued. */
+    /** Snapshot of the offer's partner, category and discount when issued. */
     discount: jsonb('discount').notNull(),
     costCoins: integer('cost_coins').notNull(),
     issuedAt: timestamp('issued_at', { withTimezone: true }).notNull(),
@@ -458,7 +465,7 @@ export const cardQuestion = pgTable(
 export const cardAnswer = pgTable(
   'card_answer',
   {
-    userId: uuid('user_id')
+    userId: text('user_id')
       .notNull()
       .references(() => appUser.id),
     questionId: uuid('question_id')
@@ -477,7 +484,7 @@ export const cardAnswer = pgTable(
 export const masteryMatchScore = pgTable(
   'mastery_match_score',
   {
-    userId: uuid('user_id')
+    userId: text('user_id')
       .notNull()
       .references(() => appUser.id),
     fixtureId: text('fixture_id')
@@ -493,7 +500,7 @@ export const masteryMatchScore = pgTable(
 export const masterySeason = pgTable(
   'mastery_season',
   {
-    userId: uuid('user_id')
+    userId: text('user_id')
       .notNull()
       .references(() => appUser.id),
     seasonId: text('season_id')
@@ -529,7 +536,7 @@ export const leagueMember = pgTable(
     leagueId: uuid('league_id')
       .notNull()
       .references(() => league.id, { onDelete: 'cascade' }),
-    userId: uuid('user_id')
+    userId: text('user_id')
       .notNull()
       .references(() => appUser.id),
     role: leagueRoleEnum('role').notNull().default('member'),

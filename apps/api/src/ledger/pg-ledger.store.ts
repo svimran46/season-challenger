@@ -13,8 +13,20 @@ import { and, desc, eq, inArray, sql } from 'drizzle-orm';
 import type { Database } from '../db/client';
 import { ledgerBalance, ledgerPosting, ledgerTransaction } from '../db/schema';
 
-type Tx = Parameters<Parameters<Database['transaction']>[0]>[0];
-type Executor = Database | Tx;
+export type Tx = Parameters<Parameters<Database['transaction']>[0]>[0];
+export type Executor = Database | Tx;
+
+/**
+ * The database transaction behind a ledger unit of work, so other tables can be written in the
+ * same transaction as the coins. Without a unit of work, queries run on `db` directly.
+ */
+export function executorFor(db: Database, uow?: LedgerUnitOfWork): Executor {
+  if (!uow) return db;
+  if (!(uow instanceof PgUnitOfWork)) {
+    throw new Error('A Postgres repository needs a unit of work from PgLedgerStore.');
+  }
+  return uow.tx;
+}
 
 /**
  * The coin ledger in Postgres. User and contest balances are cached in ledger_balance and
@@ -82,7 +94,7 @@ class PgUnitOfWork implements LedgerUnitOfWork {
   private readonly balances = new Map<AccountId, number>();
   private readonly keys = new Map<string, Transaction | undefined>();
 
-  constructor(private readonly tx: Tx) {}
+  constructor(readonly tx: Tx) {}
 
   async lock(accounts: readonly AccountId[], idempotencyKeys: readonly string[] = []) {
     const need = [...new Set(accounts)]

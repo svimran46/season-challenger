@@ -200,7 +200,11 @@ export default function SquadScreen() {
       />
       <View style={[styles.footer, { backgroundColor: t.surface, borderColor: t.border }]}>
         <Text style={{ color: join.error ? t.live : t.muted, marginBottom: 8 }} numberOfLines={2}>
-          {join.error instanceof ApiError ? join.error.message : status}
+          {join.error instanceof ApiError
+            ? join.error.code === 'contest_full'
+              ? 'This tournament just filled up. Go back and pick another.'
+              : join.error.message
+            : status}
         </Text>
         <Button
           label={`Join for ${formatCoins(c.entryFee)}`}

@@ -11,8 +11,8 @@ import {
   type Transaction,
 } from '@season/wallet';
 import { createHmac } from 'node:crypto';
-import { CLOCK, ECONOMY_STORES, LEDGER_STORE, type Clock } from '../common/tokens';
-import type { EconomyStores, PlayerProfile } from './stores';
+import { CLOCK, ECONOMY_REPOSITORY, LEDGER_STORE, type Clock } from '../common/tokens';
+import { IdentityInUseError, type EconomyRepository, type PlayerProfile } from './stores';
 
 export const userAccounts = (userId: string) => [
   userAccount(userId, 'bonus'),
@@ -33,27 +33,28 @@ export interface WalletActivity {
 export class WalletService {
   constructor(
     @Inject(LEDGER_STORE) private readonly ledger: LedgerStore,
-    @Inject(ECONOMY_STORES) private readonly stores: EconomyStores,
+    @Inject(ECONOMY_REPOSITORY) private readonly repo: EconomyRepository,
     @Inject(CLOCK) private readonly clock: Clock,
   ) {}
 
   /** Creates the player on first sight and pays the 500-coin sign-up bonus exactly once. */
   async ensurePlayer(userId: string): Promise<PlayerProfile> {
-    const existing = this.stores.players.get(userId);
+    const existing = await this.repo.getPlayer(userId);
     if (existing) return existing;
     return this.ledger.transact(async (uow) => {
       await uow.post(signUpBonus(userId));
-      const profile: PlayerProfile = this.stores.players.get(userId) ?? {
-        id: userId,
-        createdAt: this.clock().toISOString(),
-        birthDate: null,
-        idVerifiedAt: null,
-        idDocumentHash: null,
-        redemptionsBlocked: false,
-        lastCheckIn: null,
-      };
-      this.stores.players.set(userId, profile);
-      return profile;
+      return this.repo.createPlayer(
+        {
+          id: userId,
+          createdAt: this.clock().toISOString(),
+          birthDate: null,
+          idVerifiedAt: null,
+          idDocumentHash: null,
+          redemptionsBlocked: false,
+          lastCheckIn: null,
+        },
+        uow,
+      );
     });
   }
 
@@ -88,11 +89,20 @@ export class WalletService {
     if (next.alreadyCheckedIn) {
       return { today, streak: next.streak, coins: 0, alreadyCheckedIn: true };
     }
+    const draft = dailyCheckIn(userId, today, next.streak);
     const txn = await this.ledger.transact(async (uow) => {
-      const posted = await uow.post(dailyCheckIn(userId, today, next.streak));
-      profile.lastCheckIn = { date: today, streak: next.streak };
+      // A check-in racing this one may have paid today's reward since we read the profile.
+      const reader = await uow.lock(userAccounts(userId), [draft.idempotencyKey]);
+      if (reader.findByKey(draft.idempotencyKey)) return null;
+      const posted = await uow.post(draft);
+      await this.repo.recordCheckIn(
+        userId,
+        { date: today, streak: next.streak, rewardTxnId: posted.id },
+        uow,
+      );
       return posted;
     });
+    if (!txn) return { today, streak: next.streak, coins: 0, alreadyCheckedIn: true };
     const coins = txn.postings.find((p) => p.account === userAccount(userId, 'bonus'))!.amount;
     return { today, streak: next.streak, coins, alreadyCheckedIn: false };
   }
@@ -126,17 +136,17 @@ export class WalletService {
     const hash = createHmac('sha256', secret ?? 'dev-only-secret')
       .update(input.documentNumber.replace(/\s+/g, '').toUpperCase())
       .digest('hex');
-    for (const other of this.stores.players.values()) {
-      if (other.id !== userId && other.idDocumentHash === hash) {
-        throw new ConflictException({
-          error: 'identity_in_use',
-          message: 'This ID is already verified on another account.',
-        });
-      }
+    const verifiedAt = this.clock().toISOString();
+    try {
+      await this.repo.recordVerification(profile.id, {
+        birthDate: input.birthDate,
+        idDocumentHash: hash,
+        idVerifiedAt: verifiedAt,
+      });
+    } catch (error) {
+      if (!(error instanceof IdentityInUseError)) throw error;
+      throw new ConflictException({ error: 'identity_in_use', message: error.message });
     }
-    profile.birthDate = input.birthDate;
-    profile.idDocumentHash = hash;
-    profile.idVerifiedAt = this.clock().toISOString();
-    return { verified: true, birthDate: profile.birthDate, verifiedAt: profile.idVerifiedAt };
+    return { verified: true, birthDate: input.birthDate, verifiedAt };
   }
 }

@@ -75,20 +75,39 @@ Signed-in routes need `x-user-id` until phone sign-in is built. This works in de
 | POST   | `/v1/vouchers/redeem`           | `{ offerId, requestId }`; won coins only, retry-safe                |
 
 Tournaments lock at kick-off (cancelled and refunded if they did not reach their minimum) and
-pay out when the match is final. Today the API keeps players, tournaments and vouchers in
-memory; the coin ledger already has a Postgres store (`PgLedgerStore`) and the tables are in the
-schema, so they move to the database with phone sign-in and the feed sync.
+pay out when the match is final. The worker does this every `WORKER_SECONDS`, and reads do it
+too, so a tournament never waits on a tick.
+
+### Where the economy is stored
+
+With `DATABASE_URL` set, players, coins (`PgLedgerStore`), tournaments, entries and vouchers live
+in Postgres (`PgEconomyRepository`). Without it, everything lives in memory and is lost on
+restart. The services only see the `EconomyRepository` interface in
+`apps/api/src/economy/stores.ts`, so both stores behave the same.
+
+- Writes that move coins run in the same database transaction as the ledger postings.
+- Joining locks the tournament row first, so two players cannot take the last seat.
+- Redeeming locks the offer row, so the last voucher in stock cannot be issued twice.
+- Lock, cancel and settle re-check the tournament under its row lock, so two instances never
+  process it twice.
+- Demo voucher offers are seeded on boot. An offer that already exists keeps its remaining
+  stock.
+
+Migration `0001_economy_in_postgres` makes player, tournament and entry ids text (player ids
+come from sign-in, tournament ids are readable and deterministic), keeps the squad on each entry,
+and keeps the partner and category on each issued voucher.
 
 ## Database
 
 ```bash
 docker compose up -d
-pnpm --filter @season/api db:migrate     # apply migrations
+pnpm --filter @season/api db:migrate     # apply migrations; run before the first start
 pnpm --filter @season/api db:generate    # after editing apps/api/src/db/schema.ts
 ```
 
-CI fails if `schema.ts` changes without a matching migration. The ledger's Postgres tests
-(concurrent entries, retries, rollback, double settlement) run with:
+CI fails if `schema.ts` changes without a matching migration. The Postgres tests (ledger
+concurrency and retries, feed sync, the economy store, and tournaments and vouchers end to end)
+run with:
 
 ```bash
 DATABASE_URL=postgres://season:season@localhost:5432/season_challenger pnpm --filter @season/api test:db
@@ -100,6 +119,7 @@ DATABASE_URL=postgres://season:season@localhost:5432/season_challenger pnpm --fi
 pnpm format:check
 pnpm typecheck
 pnpm test
+pnpm --filter @season/api test:db   # needs DATABASE_URL and migrated Postgres
 ```
 
 The same checks run in GitHub Actions on every push to `main`.
