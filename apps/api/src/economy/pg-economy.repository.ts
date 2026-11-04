@@ -5,6 +5,7 @@ import {
   type PrizeTier,
   type VoucherDiscount,
   type VoucherOffer,
+  type WithdrawalStatus,
 } from '@season/wallet';
 import { and, asc, desc, eq, gt, gte, inArray, sql, type SQL } from 'drizzle-orm';
 import type { Database } from '../db/client';
@@ -13,9 +14,13 @@ import {
   contest,
   contestEntry,
   dailyCheckIn,
+  depositInvoice,
+  paymentWebhook,
+  phoneIdentity,
   voucher,
   voucherOffer,
   voucherPartner,
+  withdrawalRequest,
 } from '../db/schema';
 import { executorFor } from '../ledger/pg-ledger.store';
 import {
@@ -23,15 +28,21 @@ import {
   type ContestFilter,
   type ContestRecord,
   type ContestStatus,
+  type DepositInvoiceRecord,
+  type DepositStatus,
   type EconomyRepository,
   type EntryRecord,
   type PlayerProfile,
   type VoucherRecord,
+  type WebhookEventRecord,
+  type WithdrawalRecord,
 } from './stores';
 
 type ContestRow = typeof contest.$inferSelect;
 type EntryRow = typeof contestEntry.$inferSelect;
 type VoucherRow = typeof voucher.$inferSelect;
+type InvoiceRow = typeof depositInvoice.$inferSelect;
+type WithdrawalRow = typeof withdrawalRequest.$inferSelect;
 
 const iso = (d: Date | null) => (d ? d.toISOString() : null);
 const toDate = (s: string | null) => (s === null ? null : new Date(s));
@@ -405,6 +416,169 @@ export class PgEconomyRepository implements EconomyRepository {
     return rows.map(toVoucher);
   }
 
+  // ------------------------------------------------------------ money
+
+  async getInvoice(
+    id: string,
+    uow?: LedgerUnitOfWork,
+    opts?: { lock?: boolean },
+  ): Promise<DepositInvoiceRecord | undefined> {
+    const query = executorFor(this.db, uow)
+      .select()
+      .from(depositInvoice)
+      .where(eq(depositInvoice.id, id));
+    const [row] = opts?.lock ? await query.for('update') : await query;
+    return row ? toInvoice(row) : undefined;
+  }
+
+  async invoicesOfUser(userId: string): Promise<DepositInvoiceRecord[]> {
+    const rows = await this.db
+      .select()
+      .from(depositInvoice)
+      .where(eq(depositInvoice.userId, userId))
+      .orderBy(desc(depositInvoice.createdAt), desc(depositInvoice.id));
+    return rows.map(toInvoice);
+  }
+
+  async insertInvoice(invoice: DepositInvoiceRecord, uow?: LedgerUnitOfWork): Promise<void> {
+    await executorFor(this.db, uow)
+      .insert(depositInvoice)
+      .values({
+        id: invoice.id,
+        userId: invoice.userId,
+        gateway: invoice.gateway,
+        channel: invoice.channel,
+        amountBdt: invoice.amountBdt,
+        coins: invoice.coins,
+        status: invoice.status,
+        checkoutUrl: invoice.checkoutUrl,
+        depositTxnId: invoice.depositTxnId,
+        paidAt: toDate(invoice.paidAt),
+        createdAt: new Date(invoice.createdAt),
+        expiresAt: new Date(invoice.expiresAt),
+      });
+  }
+
+  async updateInvoice(
+    id: string,
+    patch: { status: DepositStatus; depositTxnId?: string | null; paidAt?: string | null },
+    uow?: LedgerUnitOfWork,
+  ): Promise<void> {
+    await executorFor(this.db, uow)
+      .update(depositInvoice)
+      .set({
+        status: patch.status,
+        ...(patch.depositTxnId !== undefined ? { depositTxnId: patch.depositTxnId } : {}),
+        ...(patch.paidAt !== undefined ? { paidAt: toDate(patch.paidAt) } : {}),
+      })
+      .where(eq(depositInvoice.id, id));
+  }
+
+  async insertWebhookEvent(event: WebhookEventRecord, uow?: LedgerUnitOfWork): Promise<void> {
+    await executorFor(this.db, uow)
+      .insert(paymentWebhook)
+      .values({
+        gateway: event.gateway,
+        eventId: event.eventId,
+        invoiceId: event.invoiceId,
+        signatureValid: event.signatureValid,
+        payload: event.payload as object,
+        processedAt: toDate(event.processedAt),
+        createdAt: new Date(event.createdAt),
+      })
+      .onConflictDoNothing();
+  }
+
+  async getWithdrawal(
+    id: string,
+    uow?: LedgerUnitOfWork,
+    opts?: { lock?: boolean },
+  ): Promise<WithdrawalRecord | undefined> {
+    const query = executorFor(this.db, uow)
+      .select()
+      .from(withdrawalRequest)
+      .where(eq(withdrawalRequest.id, id));
+    const [row] = opts?.lock ? await query.for('update') : await query;
+    return row ? toWithdrawal(row) : undefined;
+  }
+
+  async withdrawalsOfUser(userId: string): Promise<WithdrawalRecord[]> {
+    const rows = await this.db
+      .select()
+      .from(withdrawalRequest)
+      .where(eq(withdrawalRequest.userId, userId))
+      .orderBy(desc(withdrawalRequest.createdAt), desc(withdrawalRequest.id));
+    return rows.map(toWithdrawal);
+  }
+
+  async withdrawalsByStatus(statuses: readonly WithdrawalStatus[]): Promise<WithdrawalRecord[]> {
+    if (statuses.length === 0) return [];
+    const rows = await this.db
+      .select()
+      .from(withdrawalRequest)
+      .where(inArray(withdrawalRequest.status, [...statuses]))
+      .orderBy(asc(withdrawalRequest.createdAt), asc(withdrawalRequest.id));
+    return rows.map(toWithdrawal);
+  }
+
+  async insertWithdrawal(record: WithdrawalRecord, uow?: LedgerUnitOfWork): Promise<void> {
+    await executorFor(this.db, uow)
+      .insert(withdrawalRequest)
+      .values({
+        id: record.id,
+        userId: record.userId,
+        amountBdt: record.amountBdt,
+        channel: record.channel,
+        destination: record.destination,
+        status: record.status,
+        holdTxnId: record.holdTxnId,
+        releaseTxnId: record.releaseTxnId,
+        paidTxnId: record.paidTxnId,
+        payoutReference: record.payoutReference,
+        reviewReason: record.reviewReason,
+        reviewedAt: toDate(record.reviewedAt),
+        reviewedBy: record.reviewedBy,
+        createdAt: new Date(record.createdAt),
+      });
+  }
+
+  async updateWithdrawal(
+    id: string,
+    patch: {
+      status: WithdrawalStatus;
+      releaseTxnId?: string | null;
+      paidTxnId?: string | null;
+      payoutReference?: string | null;
+      reviewReason?: string | null;
+      reviewedBy?: string | null;
+      reviewedAt?: string | null;
+    },
+    uow?: LedgerUnitOfWork,
+  ): Promise<void> {
+    await executorFor(this.db, uow)
+      .update(withdrawalRequest)
+      .set({
+        status: patch.status,
+        ...(patch.releaseTxnId !== undefined ? { releaseTxnId: patch.releaseTxnId } : {}),
+        ...(patch.paidTxnId !== undefined ? { paidTxnId: patch.paidTxnId } : {}),
+        ...(patch.payoutReference !== undefined ? { payoutReference: patch.payoutReference } : {}),
+        ...(patch.reviewReason !== undefined ? { reviewReason: patch.reviewReason } : {}),
+        ...(patch.reviewedBy !== undefined ? { reviewedBy: patch.reviewedBy } : {}),
+        ...(patch.reviewedAt !== undefined ? { reviewedAt: toDate(patch.reviewedAt) } : {}),
+      })
+      .where(eq(withdrawalRequest.id, id));
+  }
+
+  /** The sign-in phone behind a user id, from the auth identities. */
+  async phoneForUser(userId: string): Promise<string | null> {
+    const [row] = await this.db
+      .select({ phone: phoneIdentity.phone })
+      .from(phoneIdentity)
+      .where(eq(phoneIdentity.userId, userId))
+      .limit(1);
+    return row?.phone ?? null;
+  }
+
   private offerQuery(ex: ReturnType<typeof executorFor>) {
     return ex
       .select({ offer: voucherOffer, partnerName: voucherPartner.name })
@@ -493,5 +667,41 @@ function toVoucher(row: VoucherRow): VoucherRecord {
     usedReference: row.usedReference,
     cancelledAt: iso(row.cancelledAt),
     redemptionTxnId: row.redemptionTxnId,
+  };
+}
+
+function toInvoice(row: InvoiceRow): DepositInvoiceRecord {
+  return {
+    id: row.id,
+    userId: row.userId,
+    gateway: row.gateway,
+    channel: row.channel,
+    amountBdt: row.amountBdt,
+    coins: row.coins,
+    status: row.status,
+    checkoutUrl: row.checkoutUrl,
+    depositTxnId: row.depositTxnId,
+    paidAt: iso(row.paidAt),
+    createdAt: row.createdAt.toISOString(),
+    expiresAt: row.expiresAt.toISOString(),
+  };
+}
+
+function toWithdrawal(row: WithdrawalRow): WithdrawalRecord {
+  return {
+    id: row.id,
+    userId: row.userId,
+    amountBdt: row.amountBdt,
+    channel: row.channel,
+    destination: row.destination,
+    status: row.status,
+    holdTxnId: row.holdTxnId,
+    releaseTxnId: row.releaseTxnId,
+    paidTxnId: row.paidTxnId,
+    payoutReference: row.payoutReference,
+    reviewReason: row.reviewReason,
+    reviewedBy: row.reviewedBy,
+    reviewedAt: iso(row.reviewedAt),
+    createdAt: row.createdAt.toISOString(),
   };
 }

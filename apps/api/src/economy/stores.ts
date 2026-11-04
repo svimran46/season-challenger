@@ -1,5 +1,12 @@
 import type { SquadPick } from '@season/shared';
-import type { ContestSetup, IssuedVoucher, LedgerUnitOfWork, VoucherOffer } from '@season/wallet';
+import type {
+  ContestSetup,
+  IssuedVoucher,
+  LedgerUnitOfWork,
+  PayoutChannel,
+  VoucherOffer,
+  WithdrawalStatus,
+} from '@season/wallet';
 
 /*
  * Players, tournaments, entries and vouchers. EconomyRepository is the storage port the economy
@@ -56,6 +63,55 @@ export interface VoucherRecord extends IssuedVoucher {
   usedReference: string | null;
   cancelledAt: string | null;
   redemptionTxnId: string;
+}
+
+/** Life of a deposit invoice: pending until a webhook settles it, then final. */
+export type DepositStatus = 'pending' | 'paid' | 'failed' | 'expired' | 'refunded';
+
+/** A checkout created for the player; the coins become theirs only once a webhook says paid. */
+export interface DepositInvoiceRecord {
+  id: string;
+  userId: string;
+  gateway: string;
+  channel: PayoutChannel;
+  amountBdt: number;
+  coins: number;
+  status: DepositStatus;
+  checkoutUrl: string | null;
+  /** The credit transaction, set when the webhook marks the invoice paid. */
+  depositTxnId: string | null;
+  paidAt: string | null;
+  createdAt: string;
+  expiresAt: string;
+}
+
+/** A cash-out request; cash stays held from creation until the review releases or pays it. */
+export interface WithdrawalRecord {
+  id: string;
+  userId: string;
+  amountBdt: number;
+  channel: PayoutChannel;
+  destination: string;
+  status: WithdrawalStatus;
+  holdTxnId: string;
+  releaseTxnId: string | null;
+  paidTxnId: string | null;
+  payoutReference: string | null;
+  reviewReason: string | null;
+  reviewedBy: string | null;
+  reviewedAt: string | null;
+  createdAt: string;
+}
+
+/** One gateway delivery; stored only after it has been handled, for the audit trail. */
+export interface WebhookEventRecord {
+  gateway: string;
+  eventId: string;
+  invoiceId: string | null;
+  signatureValid: boolean;
+  payload: unknown;
+  processedAt: string | null;
+  createdAt: string;
 }
 
 export interface ContestFilter {
@@ -136,6 +192,51 @@ export interface EconomyRepository {
     opts?: { since?: string },
     uow?: LedgerUnitOfWork,
   ): Promise<VoucherRecord[]>;
+
+  // ------------------------------------------------------------ money
+  /** With `lock`, holds the invoice row until `uow` commits, so webhooks settle once. */
+  getInvoice(
+    id: string,
+    uow?: LedgerUnitOfWork,
+    opts?: { lock?: boolean },
+  ): Promise<DepositInvoiceRecord | undefined>;
+  /** Newest first. */
+  invoicesOfUser(userId: string): Promise<DepositInvoiceRecord[]>;
+  insertInvoice(invoice: DepositInvoiceRecord, uow?: LedgerUnitOfWork): Promise<void>;
+  updateInvoice(
+    id: string,
+    patch: { status: DepositStatus; depositTxnId?: string | null; paidAt?: string | null },
+    uow?: LedgerUnitOfWork,
+  ): Promise<void>;
+  /** Every delivery is kept once per (gateway, eventId); handled before it is stored. */
+  insertWebhookEvent(event: WebhookEventRecord, uow?: LedgerUnitOfWork): Promise<void>;
+
+  /** With `lock`, holds the request row until `uow` commits, so reviews serialise. */
+  getWithdrawal(
+    id: string,
+    uow?: LedgerUnitOfWork,
+    opts?: { lock?: boolean },
+  ): Promise<WithdrawalRecord | undefined>;
+  /** Newest first. */
+  withdrawalsOfUser(userId: string): Promise<WithdrawalRecord[]>;
+  /** All requests in these statuses, oldest first, for the operator's queue. */
+  withdrawalsByStatus(statuses: readonly WithdrawalStatus[]): Promise<WithdrawalRecord[]>;
+  insertWithdrawal(record: WithdrawalRecord, uow?: LedgerUnitOfWork): Promise<void>;
+  updateWithdrawal(
+    id: string,
+    patch: {
+      status: WithdrawalStatus;
+      releaseTxnId?: string | null;
+      paidTxnId?: string | null;
+      payoutReference?: string | null;
+      reviewReason?: string | null;
+      reviewedBy?: string | null;
+      reviewedAt?: string | null;
+    },
+    uow?: LedgerUnitOfWork,
+  ): Promise<void>;
+  /** The sign-in phone behind a user id, shown next to the payout details in the queue. */
+  phoneForUser(userId: string): Promise<string | null>;
 }
 
 export class IdentityInUseError extends Error {

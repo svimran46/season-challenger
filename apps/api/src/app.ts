@@ -18,6 +18,7 @@ import { WalletErrorFilter } from './common/wallet-error.filter';
 import { WORKER_SECONDS, type Clock } from './common/tokens';
 import type { Database } from './db/client';
 import { EconomyModule } from './economy/economy.module';
+import type { MoneyOptions } from './economy/money.service';
 import { PgEconomyRepository } from './economy/pg-economy.repository';
 import { pinnedFakeFeed } from './feed/feed-sync';
 import { createFeed, FeedModule } from './feed.module';
@@ -48,6 +49,8 @@ export interface AppModuleOptions {
   workerSeconds: number;
   offers?: readonly VoucherOffer[];
   auth?: AuthAppOptions;
+  /** The money flows; absent keeps the API coin-only. */
+  money?: MoneyOptions;
 }
 
 export interface AuthAppOptions {
@@ -74,6 +77,9 @@ export class AppModule {
         EconomyModule.register({
           clock: options.clock,
           offers: options.offers,
+          // The money flows get the same ledger and repository, so their postings commit with
+          // the invoices, webhook rows and withdrawal holds in one transaction.
+          ...(options.money ? { money: options.money } : {}),
           ...(db ? { ledger: new PgLedgerStore(db), repository: new PgEconomyRepository(db) } : {}),
         }),
       ],
@@ -100,6 +106,8 @@ export interface CreateAppOptions {
   offers?: readonly VoucherOffer[];
   /** Phone sign-in: SMS sender and limits. Tests pass a MemorySmsSender to read codes back. */
   auth?: AuthAppOptions;
+  /** Deposits, conversions and cash-outs. main.ts passes it from config; tests opt in. */
+  money?: MoneyOptions;
   logger?: false;
 }
 
@@ -115,8 +123,14 @@ export async function createApp(options: CreateAppOptions = {}): Promise<INestAp
       workerSeconds: options.workerSeconds ?? 60,
       offers: options.offers,
       auth: options.auth,
+      ...(options.money ? { money: options.money } : {}),
     }),
-    { logger: options.logger === false ? false : undefined },
+    {
+      logger: options.logger === false ? false : undefined,
+      // Gateway webhooks are signed over the exact bytes they sent; a re-serialised body can
+      // differ in whitespace, so the raw body travels with the request for verification.
+      rawBody: true,
+    },
   );
   app.enableCors();
   app.setGlobalPrefix('v1', { exclude: ['health'] });

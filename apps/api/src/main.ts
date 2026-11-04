@@ -15,6 +15,19 @@ async function main() {
     database,
     workerSeconds: config.workerSeconds,
     auth: { sms, settings: { secret: config.authSecret } },
+    // Deposits, conversions and cash-outs are on unless MONEY_ENABLED=false.
+    ...(config.money.enabled
+      ? {
+          money: {
+            settings: config.money.settings,
+            gateway: config.money.gateway,
+            paymentsSecret: config.money.paymentsSecret,
+            apiPublicUrl: config.money.apiPublicUrl,
+            // Unpaid invoices expire after half an hour, like an e-wallet checkout window.
+            invoiceValidityMinutes: 30,
+          },
+        }
+      : {}),
   })) as NestExpressApplication;
   if (config.trustProxy) app.set('trust proxy', true);
   await app.listen(config.port);

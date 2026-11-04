@@ -51,8 +51,36 @@ export const ledgerKindEnum = pgEnum('ledger_kind', [
   'contest_settlement',
   'voucher_redemption',
   'voucher_refund',
+  'deposit',
+  'deposit_refund',
+  'redeem',
+  'coin_to_cash',
+  'withdraw_hold',
+  'withdraw_release',
+  'withdraw_paid',
 ]);
 export const voucherCategoryEnum = pgEnum('voucher_category', ['shop', 'travel']);
+export const payoutChannelEnum = pgEnum('payout_channel', [
+  'bkash',
+  'nagad',
+  'rocket',
+  'upay',
+  'bank',
+]);
+export const depositStatusEnum = pgEnum('deposit_status', [
+  'pending',
+  'paid',
+  'failed',
+  'expired',
+  'refunded',
+]);
+export const withdrawalStatusEnum = pgEnum('withdrawal_status', [
+  'pending',
+  'approved',
+  'rejected',
+  'paid',
+  'failed',
+]);
 export const tierEnum = pgEnum('tier', ['Scout', 'Analyst', 'Tactician', 'Master', 'Grandmaster']);
 export const leagueRoleEnum = pgEnum('league_role', ['owner', 'member']);
 
@@ -586,4 +614,87 @@ export const leagueMember = pgTable(
     joinedAt: createdAt(),
   },
   (t) => [primaryKey({ columns: [t.leagueId, t.userId] })],
+);
+
+// ---------------------------------------------------------------- money
+
+/**
+ * A checkout the money module created; the invoice stays pending until a signed gateway
+ * webhook (or the mock's simulate endpoint in development) settles it exactly once.
+ */
+export const depositInvoice = pgTable(
+  'deposit_invoice',
+  {
+    id: text('id').primaryKey(), // INV-XXXXXXXXXXXX, made by the service
+    userId: text('user_id')
+      .notNull()
+      .references(() => appUser.id),
+    gateway: text('gateway').notNull(),
+    channel: payoutChannelEnum('channel').notNull(),
+    amountBdt: integer('amount_bdt').notNull(),
+    coins: integer('coins').notNull(),
+    status: depositStatusEnum('status').notNull().default('pending'),
+    checkoutUrl: text('checkout_url'),
+    /** The credit transaction, set when the webhook marks the invoice paid. */
+    depositTxnId: uuid('deposit_txn_id').references(() => ledgerTransaction.id),
+    paidAt: timestamp('paid_at', { withTimezone: true }),
+    createdAt: createdAt(),
+    expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+  },
+  (t) => [
+    check('deposit_invoice_positive', sql`${t.amountBdt} > 0 and ${t.coins} > 0`),
+    index('deposit_invoice_user_idx').on(t.userId, t.createdAt),
+    index('deposit_invoice_status_idx').on(t.status, t.createdAt),
+  ],
+);
+
+/** Every gateway delivery, kept once per (gateway, event id), tampered ones included. */
+export const paymentWebhook = pgTable(
+  'payment_webhook',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    gateway: text('gateway').notNull(),
+    eventId: text('event_id').notNull(),
+    invoiceId: text('invoice_id').references(() => depositInvoice.id),
+    signatureValid: boolean('signature_valid').notNull().default(false),
+    payload: jsonb('payload').notNull(),
+    /** Set when the delivery has been handled; never stored before that. */
+    processedAt: timestamp('processed_at', { withTimezone: true }),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    unique('payment_webhook_event_uq').on(t.gateway, t.eventId),
+    index('payment_webhook_invoice_idx').on(t.invoiceId),
+  ],
+);
+
+/** A cash-out request: the hold commits with this row, in the same database transaction. */
+export const withdrawalRequest = pgTable(
+  'withdrawal_request',
+  {
+    id: text('id').primaryKey(), // the player's idempotency requestId
+    userId: text('user_id')
+      .notNull()
+      .references(() => appUser.id),
+    amountBdt: integer('amount_bdt').notNull(),
+    channel: payoutChannelEnum('channel').notNull(),
+    destination: text('destination').notNull(), // wallet/bank number the payout goes to
+    status: withdrawalStatusEnum('status').notNull().default('pending'),
+    holdTxnId: uuid('hold_txn_id')
+      .notNull()
+      .references(() => ledgerTransaction.id),
+    releaseTxnId: uuid('release_txn_id').references(() => ledgerTransaction.id),
+    paidTxnId: uuid('paid_txn_id').references(() => ledgerTransaction.id),
+    /** The e-wallet/bank reference the operator recorded when paying out. */
+    payoutReference: text('payout_reference'),
+    reviewReason: text('review_reason'),
+    reviewedAt: timestamp('reviewed_at', { withTimezone: true }),
+    reviewedBy: text('reviewed_by'),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    check('withdrawal_request_positive', sql`${t.amountBdt} > 0`),
+    index('withdrawal_request_user_idx').on(t.userId, t.createdAt),
+    index('withdrawal_request_status_idx').on(t.status, t.createdAt),
+  ],
 );

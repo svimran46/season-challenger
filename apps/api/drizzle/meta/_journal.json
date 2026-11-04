@@ -22,6 +22,13 @@
       "when": 1793756790211,
       "tag": "0002_phone_sign_in",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1793758000000,
+      "tag": "0003_sticky_patriot",
+      "breakpoints": true
     }
   ]
 }

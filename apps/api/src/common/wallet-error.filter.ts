@@ -16,6 +16,11 @@ const STATUS: Record<WalletErrorCode, HttpStatus> = {
   out_of_stock: HttpStatus.CONFLICT,
   limit_reached: HttpStatus.CONFLICT,
   voucher_not_usable: HttpStatus.CONFLICT,
+  // money
+  insufficient_cash: HttpStatus.CONFLICT,
+  invalid_payout: HttpStatus.BAD_REQUEST,
+  invalid_deposit: HttpStatus.CONFLICT,
+  not_reviewable: HttpStatus.CONFLICT,
   idempotency_conflict: HttpStatus.CONFLICT,
   // These mean a bug produced a bad transaction, not a user mistake.
   unbalanced: HttpStatus.INTERNAL_SERVER_ERROR,

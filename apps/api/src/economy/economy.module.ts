@@ -6,11 +6,16 @@ import {
   type VoucherOffer,
 } from '@season/wallet';
 import { CLOCK, ECONOMY_REPOSITORY, LEDGER_STORE, type Clock } from '../common/tokens';
+import { AdminMoneyController } from './admin-money.controller';
 import { ContestsController } from './contests.controller';
 import { ContestsService } from './contests.service';
 import { EconomyController } from './economy.controller';
 import { MeController } from './me.controller';
 import { MemoryEconomyRepository } from './memory-economy.repository';
+import { MoneyController } from './money.controller';
+import { MONEY_SERVICE } from './money.tokens';
+import { MONEY_OPTIONS, MoneyService, type MoneyOptions } from './money.service';
+import { PaymentsController } from './payments/payments.controller';
 import type { EconomyRepository } from './stores';
 import { VouchersController } from './vouchers.controller';
 import { VouchersService } from './vouchers.service';
@@ -24,6 +29,11 @@ export interface EconomyOptions {
   repository?: EconomyRepository;
   /** Offers saved on boot. Empty until real partners sign; tests pass a fixture catalogue. */
   offers?: readonly VoucherOffer[];
+  /**
+   * The money flows (deposits, redeem, conversions, held cash-outs). Absent keeps the API
+   * coin-only: the money controllers are not mounted and /v1/economy reports moneyIn false.
+   */
+  money?: MoneyOptions;
 }
 
 /** Ids of the placeholder offers earlier builds saved on boot. */
@@ -45,15 +55,33 @@ export async function seedOffers(
   await repository.upsertOffers([...retired, ...offers]);
 }
 
-/** Coins, tournaments and vouchers. */
+/** Coins, tournaments, vouchers and — when the app opts in with `money` — the money flows. */
 @Module({})
 export class EconomyModule {
   static register(options: EconomyOptions = {}): DynamicModule {
     const clock = options.clock ?? (() => new Date());
     const repository = options.repository ?? new MemoryEconomyRepository();
+    // The money module is opt-in: main.ts passes it from config; tests omit it to get the
+    // coin-only economy. Controllers come and go with it, so its routes 404 when unmounted.
+    const money = options.money
+      ? {
+          providers: [
+            { provide: MONEY_OPTIONS, useValue: options.money },
+            MoneyService,
+            { provide: MONEY_SERVICE, useExisting: MoneyService },
+          ],
+          controllers: [MoneyController, PaymentsController, AdminMoneyController],
+        }
+      : { providers: [], controllers: [] };
     return {
       module: EconomyModule,
-      controllers: [EconomyController, MeController, ContestsController, VouchersController],
+      controllers: [
+        ...money.controllers,
+        EconomyController,
+        MeController,
+        ContestsController,
+        VouchersController,
+      ],
       providers: [
         { provide: CLOCK, useValue: clock },
         { provide: LEDGER_STORE, useValue: options.ledger ?? new MemoryLedgerStore(clock) },
@@ -68,6 +96,7 @@ export class EconomyModule {
         WalletService,
         ContestsService,
         VouchersService,
+        ...money.providers,
       ],
       exports: [ContestsService],
     };

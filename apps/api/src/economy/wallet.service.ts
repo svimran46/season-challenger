@@ -1,5 +1,6 @@
 import { ConflictException, Inject, Injectable } from '@nestjs/common';
 import {
+  cashAccount,
   dailyCheckIn,
   dailyCheckInAmount,
   dhakaDate,
@@ -17,6 +18,7 @@ import { IdentityInUseError, type EconomyRepository, type PlayerProfile } from '
 export const userAccounts = (userId: string) => [
   userAccount(userId, 'bonus'),
   userAccount(userId, 'winnings'),
+  cashAccount(userId),
 ];
 
 export interface WalletActivity {
@@ -26,6 +28,8 @@ export interface WalletActivity {
   /** Net change to this user's coins, split by balance. */
   bonus: number;
   winnings: number;
+  /** Net change to this user's cash (whole taka) for the money rows. */
+  cash: number;
   meta: Record<string, string | number>;
 }
 
@@ -60,7 +64,7 @@ export class WalletService {
 
   async wallet(userId: string) {
     const profile = await this.ensurePlayer(userId);
-    const [bonus, winnings] = await Promise.all(
+    const [bonus, winnings, cash] = await Promise.all(
       userAccounts(userId).map((a) => this.ledger.balance(a)),
     );
     const today = dhakaDate(this.clock());
@@ -71,6 +75,8 @@ export class WalletService {
       total: bonus! + winnings!,
       /** Only won coins can be redeemed for vouchers. */
       redeemable: winnings,
+      /** Taka on the money side: comes only from won coins, withdraws after review. */
+      cash: cash ?? 0,
       checkIn: {
         today,
         checkedIn: next.alreadyCheckedIn,
@@ -118,6 +124,7 @@ export class WalletService {
       createdAt: t.createdAt,
       bonus: amountOn(t, userAccount(userId, 'bonus')),
       winnings: amountOn(t, userAccount(userId, 'winnings')),
+      cash: amountOn(t, cashAccount(userId)),
       meta: t.meta ?? {},
     }));
   }

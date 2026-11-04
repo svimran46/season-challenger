@@ -9,5 +9,6 @@ export const ECONOMY_REPOSITORY = Symbol('ECONOMY_REPOSITORY');
 export const DATABASE = Symbol('DATABASE');
 export const FEED_SYNC = Symbol('FEED_SYNC');
 export const WORKER_SECONDS = Symbol('WORKER_SECONDS');
+export const ADMIN_TOKEN = Symbol('ADMIN_TOKEN');
 
 export type Clock = () => Date;

@@ -1,14 +1,19 @@
 import type { VoucherOffer } from '@season/wallet';
-import {
-  IdentityInUseError,
-  type ContestFilter,
-  type ContestRecord,
-  type ContestStatus,
-  type EconomyRepository,
-  type EntryRecord,
-  type PlayerProfile,
-  type VoucherRecord,
+import type {
+  DepositStatus,
+  DepositInvoiceRecord,
+  EconomyRepository,
+  EntryRecord,
+  PlayerProfile,
+  ContestFilter,
+  ContestRecord,
+  ContestStatus,
+  VoucherRecord,
+  WebhookEventRecord,
+  WithdrawalRecord,
 } from './stores';
+import { IdentityInUseError } from './stores';
+import type { WithdrawalStatus } from '@season/wallet';
 
 const copy = <T>(value: T): T => structuredClone(value);
 
@@ -22,6 +27,9 @@ export class MemoryEconomyRepository implements EconomyRepository {
   private readonly entries = new Map<string, EntryRecord>();
   private readonly offers = new Map<string, VoucherOffer>();
   private readonly vouchers = new Map<string, VoucherRecord>();
+  private readonly invoices = new Map<string, DepositInvoiceRecord>();
+  private readonly webhookEvents = new Map<string, WebhookEventRecord>();
+  private readonly withdrawals = new Map<string, WithdrawalRecord>();
 
   // ------------------------------------------------------------ players
 
@@ -174,5 +182,75 @@ export class MemoryEconomyRepository implements EconomyRepository {
       .filter((v) => v.userId === userId && Date.parse(v.issuedAt) >= since)
       .sort((a, b) => b.issuedAt.localeCompare(a.issuedAt))
       .map(copy);
+  }
+
+  // ------------------------------------------------------------ money
+
+  async getInvoice(id: string) {
+    const i = this.invoices.get(id);
+    return i && copy(i);
+  }
+
+  async invoicesOfUser(userId: string) {
+    return [...this.invoices.values()]
+      .filter((i) => i.userId === userId)
+      .sort((a, b) => b.createdAt.localeCompare(a.createdAt) || b.id.localeCompare(a.id))
+      .map(copy);
+  }
+
+  async insertInvoice(invoice: DepositInvoiceRecord) {
+    this.invoices.set(invoice.id, copy(invoice));
+  }
+
+  async updateInvoice(
+    id: string,
+    patch: { status: DepositStatus } & Partial<DepositInvoiceRecord>,
+  ) {
+    const i = this.invoices.get(id);
+    if (!i) throw new Error(`Deposit invoice ${id} not found`);
+    Object.assign(i, patch);
+  }
+
+  async insertWebhookEvent(event: WebhookEventRecord) {
+    const key = `${event.gateway}:${event.eventId}`;
+    if (!this.webhookEvents.has(key)) this.webhookEvents.set(key, copy(event));
+  }
+
+  async getWithdrawal(id: string) {
+    const w = this.withdrawals.get(id);
+    return w && copy(w);
+  }
+
+  async withdrawalsOfUser(userId: string) {
+    return [...this.withdrawals.values()]
+      .filter((w) => w.userId === userId)
+      .sort((a, b) => b.createdAt.localeCompare(a.createdAt) || b.id.localeCompare(a.id))
+      .map(copy);
+  }
+
+  /** Oldest first, like the queue the operator works down. */
+  async withdrawalsByStatus(statuses: readonly WithdrawalStatus[]) {
+    return [...this.withdrawals.values()]
+      .filter((w) => statuses.includes(w.status))
+      .sort((a, b) => a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id))
+      .map(copy);
+  }
+
+  async insertWithdrawal(record: WithdrawalRecord) {
+    this.withdrawals.set(record.id, copy(record));
+  }
+
+  async updateWithdrawal(
+    id: string,
+    patch: { status: WithdrawalStatus } & Partial<WithdrawalRecord>,
+  ) {
+    const w = this.withdrawals.get(id);
+    if (!w) throw new Error(`Cash-out request ${id} not found`);
+    Object.assign(w, patch);
+  }
+
+  /** Sign-in lives in the auth store, not here; the memory queue shows unknown phones. */
+  async phoneForUser() {
+    return null;
   }
 }
