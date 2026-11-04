@@ -1,11 +1,14 @@
+import { Ionicons } from '@expo/vector-icons';
 import { useQuery } from '@tanstack/react-query';
 import { Link } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
 import { api, type FixtureSummary } from '../../src/api';
 import { countdown, formatKickoff } from '../../src/format';
-import { useTheme } from '../../src/theme';
-import { Card, Chip, Loading, Message, Screen } from '../../src/ui';
+import { font, useTheme } from '../../src/theme';
+import { kitLight } from '../../src/shaders/looks';
+import { ShaderSurface } from '../../src/shaders/ShaderSurface';
+import { Chip, ClubCrest, Loading, Message, Screen } from '../../src/ui';
 
 export default function MatchesScreen() {
   const t = useTheme();
@@ -22,6 +25,9 @@ export default function MatchesScreen() {
     enabled: gameweek !== undefined,
   });
 
+  const entries = useQuery({ queryKey: ['my-entries'], queryFn: api.myEntries });
+  const entered = new Set(entries.data?.map((e) => e.fixture?.id));
+
   if (season.isError) {
     return (
       <Message
@@ -36,18 +42,33 @@ export default function MatchesScreen() {
   return (
     <Screen>
       <View style={styles.switcher}>
-        <Pressable disabled={gameweek <= 1} onPress={() => setGameweek(gameweek - 1)} hitSlop={12}>
-          <Text style={[styles.arrow, { color: gameweek <= 1 ? t.border : t.text }]}>‹</Text>
-        </Pressable>
-        <Text style={[styles.gameweek, { color: t.text }]}>
-          Gameweek {gameweek} of {last}
-        </Text>
         <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Previous gameweek"
+          disabled={gameweek <= 1}
+          onPress={() => setGameweek(gameweek - 1)}
+          hitSlop={12}
+        >
+          <Ionicons name="chevron-back" size={22} color={gameweek <= 1 ? t.border : t.accent} />
+        </Pressable>
+        <View style={styles.week}>
+          <Text style={[styles.weekLabel, { color: t.accent }]}>GAMEWEEK</Text>
+          <Text style={[styles.gameweek, { color: t.text }]}>
+            {gameweek} <Text style={{ color: t.muted }}>of {last}</Text>
+          </Text>
+        </View>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Next gameweek"
           disabled={gameweek >= last}
           onPress={() => setGameweek(gameweek + 1)}
           hitSlop={12}
         >
-          <Text style={[styles.arrow, { color: gameweek >= last ? t.border : t.text }]}>›</Text>
+          <Ionicons
+            name="chevron-forward"
+            size={22}
+            color={gameweek >= last ? t.border : t.accent}
+          />
         </Pressable>
       </View>
       {fixtures.isLoading ? (
@@ -56,7 +77,10 @@ export default function MatchesScreen() {
         <FlatList
           data={fixtures.data ?? []}
           keyExtractor={(f) => f.id}
-          renderItem={({ item }) => <FixtureCard fixture={item} />}
+          contentContainerStyle={styles.list}
+          renderItem={({ item, index }) => (
+            <FixtureCard fixture={item} index={index} entered={entered.has(item.id)} />
+          )}
           refreshing={fixtures.isRefetching}
           onRefresh={() => fixtures.refetch()}
         />
@@ -65,7 +89,15 @@ export default function MatchesScreen() {
   );
 }
 
-function FixtureCard({ fixture }: { fixture: FixtureSummary }) {
+function FixtureCard({
+  fixture,
+  index,
+  entered,
+}: {
+  fixture: FixtureSummary;
+  index: number;
+  entered: boolean;
+}) {
   const t = useTheme();
   const scheduled = fixture.status === 'scheduled';
   const card = useQuery({
@@ -75,25 +107,58 @@ function FixtureCard({ fixture }: { fixture: FixtureSummary }) {
   });
   return (
     <Link href={{ pathname: '/fixture/[id]', params: { id: fixture.id } }} asChild>
-      <Pressable>
-        <Card>
-          <View style={styles.row}>
-            <ClubName name={fixture.home.name} colour={fixture.home.colour} />
-            {fixture.score ? (
-              <Text style={[styles.score, { color: t.text }]}>
-                {fixture.score.home} – {fixture.score.away}
+      <Pressable
+        accessibilityRole="link"
+        accessibilityLabel={`${fixture.home.name} against ${fixture.away.name}`}
+        style={StyleSheet.flatten([styles.match, { borderColor: t.border }])}
+      >
+        {/* A still frame: a whole list of moving shaders would cost too much battery. */}
+        <ShaderSurface
+          look="clash"
+          animated={false}
+          seed={11 + index * 3}
+          colours={{ home: kitLight(fixture.home.colour), away: kitLight(fixture.away.colour) }}
+        />
+        <View style={styles.veil} />
+        <View style={styles.matchBody}>
+          <View style={styles.teams}>
+            <Team
+              name={fixture.home.name}
+              shortName={fixture.home.shortName}
+              colour={fixture.home.colour}
+            />
+            <View style={styles.middle}>
+              {fixture.score ? (
+                <Text style={[styles.score, { color: t.text }]}>
+                  {fixture.score.home}–{fixture.score.away}
+                </Text>
+              ) : (
+                <Text style={[styles.vs, { color: t.text }]}>VS</Text>
+              )}
+              <Text style={[styles.when, { color: t.text }]}>
+                {formatKickoff(fixture.kickoffAt).replace(/, (?=\d+:)/, '\n')}
               </Text>
-            ) : (
-              <Text style={[styles.vs, { color: t.muted }]}>v</Text>
-            )}
-            <ClubName name={fixture.away.name} colour={fixture.away.colour} alignRight />
+            </View>
+            <Team
+              name={fixture.away.name}
+              shortName={fixture.away.shortName}
+              colour={fixture.away.colour}
+            />
           </View>
-          <View style={[styles.row, styles.meta]}>
-            <Text style={{ color: t.muted }}>{formatKickoff(fixture.kickoffAt)}</Text>
+          <View style={styles.footer}>
             {scheduled ? (
-              <Text style={{ color: t.text, fontWeight: '600' }}>
-                Locks in {countdown(fixture.kickoffAt)}
-              </Text>
+              <>
+                <Text style={[styles.locks, { color: t.text }]}>
+                  Locks in {countdown(fixture.kickoffAt)}
+                </Text>
+                <View style={styles.chips}>
+                  <Chip label={entered ? 'Squad in' : 'Squad'} tone={entered ? 'done' : 'todo'} />
+                  <Chip
+                    label={card.data?.submittedAt ? 'Card in' : 'Card'}
+                    tone={card.data?.submittedAt ? 'done' : 'todo'}
+                  />
+                </View>
+              </>
             ) : (
               <Chip
                 label={fixture.status === 'live' ? 'Live' : 'Full time'}
@@ -101,35 +166,18 @@ function FixtureCard({ fixture }: { fixture: FixtureSummary }) {
               />
             )}
           </View>
-          {scheduled ? (
-            <View style={[styles.row, styles.chips]}>
-              <Chip label="Squad: to do" tone="todo" />
-              <Chip
-                label={card.data?.submittedAt ? 'Analysis card: done' : 'Analysis card: to do'}
-                tone={card.data?.submittedAt ? 'done' : 'todo'}
-              />
-            </View>
-          ) : null}
-        </Card>
+        </View>
       </Pressable>
     </Link>
   );
 }
 
-function ClubName({
-  name,
-  colour,
-  alignRight,
-}: {
-  name: string;
-  colour: string;
-  alignRight?: boolean;
-}) {
+function Team({ name, shortName, colour }: { name: string; shortName: string; colour: string }) {
   const t = useTheme();
   return (
-    <View style={[styles.club, alignRight && styles.clubRight]}>
-      <View style={[styles.dot, { backgroundColor: colour }]} />
-      <Text style={[styles.clubName, { color: t.text }]} numberOfLines={1}>
+    <View style={styles.team}>
+      <ClubCrest shortName={shortName} colour={colour} />
+      <Text style={[styles.teamName, { color: t.text }]} numberOfLines={2}>
         {name}
       </Text>
     </View>
@@ -142,17 +190,36 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 24,
-    paddingVertical: 16,
+    paddingVertical: 14,
   },
-  arrow: { fontSize: 28, fontWeight: '300' },
-  gameweek: { fontSize: 17, fontWeight: '600' },
-  row: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  meta: { marginTop: 12 },
-  chips: { marginTop: 12, justifyContent: 'flex-start', gap: 8 },
-  vs: { marginHorizontal: 8 },
-  score: { marginHorizontal: 8, fontSize: 18, fontWeight: '700', fontVariant: ['tabular-nums'] },
-  club: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 8 },
-  clubRight: { flexDirection: 'row-reverse' },
-  dot: { width: 12, height: 12, borderRadius: 6 },
-  clubName: { fontSize: 16, fontWeight: '600', flexShrink: 1 },
+  week: { alignItems: 'center' },
+  weekLabel: { fontSize: 11, fontFamily: font.title, letterSpacing: 2 },
+  gameweek: { fontSize: 20, fontFamily: font.display, marginTop: 2 },
+  list: { paddingBottom: 24 },
+  match: {
+    marginHorizontal: 16,
+    marginBottom: 14,
+    borderWidth: 1,
+    borderRadius: 18,
+    overflow: 'hidden',
+    backgroundColor: '#0c0d12',
+  },
+  veil: { ...StyleSheet.absoluteFill, backgroundColor: 'rgba(5, 5, 8, 0.34)' },
+  matchBody: { padding: 16 },
+  teams: { flexDirection: 'row', alignItems: 'flex-start' },
+  team: { flex: 1, alignItems: 'center', gap: 8 },
+  teamName: { fontSize: 14, fontFamily: font.title, textAlign: 'center' },
+  middle: { width: 96, alignItems: 'center', paddingTop: 6 },
+  vs: { fontSize: 22, fontFamily: font.heavy, letterSpacing: 1 },
+  score: { fontSize: 28, fontFamily: font.heavy, fontVariant: ['tabular-nums'] },
+  when: { fontSize: 12, textAlign: 'center', marginTop: 4, lineHeight: 16 },
+  footer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: 14,
+    minHeight: 28,
+  },
+  locks: { fontSize: 13, fontFamily: font.title },
+  chips: { flexDirection: 'row', gap: 6 },
 });

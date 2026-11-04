@@ -1,11 +1,24 @@
 import type { Player, Position } from '@season/shared';
 import { useQuery } from '@tanstack/react-query';
-import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
+import { Stack, useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
+import { useCallback, useState } from 'react';
 import { SectionList, StyleSheet, Text, View } from 'react-native';
 import { api, type Contest } from '../../src/api';
 import { countdown, formatCoins, formatKickoff, formatPoints } from '../../src/format';
-import { useTheme } from '../../src/theme';
-import { Button, Card, Chip, Loading, Message, Screen, SectionTitle } from '../../src/ui';
+import { kitLight } from '../../src/shaders/looks';
+import { ShaderSurface } from '../../src/shaders/ShaderSurface';
+import { font, useTheme } from '../../src/theme';
+import {
+  Button,
+  Card,
+  Chip,
+  ClubCrest,
+  Gauge,
+  Loading,
+  Message,
+  Screen,
+  SectionTitle,
+} from '../../src/ui';
 
 const ORDER: Position[] = ['GK', 'DEF', 'MID', 'FWD'];
 const POSITION_NAMES: Record<Position, string> = {
@@ -19,6 +32,13 @@ export default function FixtureScreen() {
   const t = useTheme();
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
+  const [isFocused, setFocused] = useState(true);
+  useFocusEffect(
+    useCallback(() => {
+      setFocused(true);
+      return () => setFocused(false);
+    }, []),
+  );
   const fixture = useQuery({ queryKey: ['fixture', id], queryFn: () => api.fixture(id) });
   const finished = fixture.data?.status === 'finished';
   const points = useQuery({
@@ -63,24 +83,43 @@ export default function FixtureScreen() {
         stickySectionHeadersEnabled={false}
         ListHeaderComponent={
           <View style={styles.header}>
-            <Card>
-              <Text style={[styles.title, { color: t.text }]}>
-                {f.home.name} {f.score ? `${f.score.home} – ${f.score.away}` : 'v'} {f.away.name}
-              </Text>
-              <Text style={{ color: t.muted, marginTop: 4 }}>
-                {formatKickoff(f.kickoffAt)}
-                {f.status === 'scheduled' ? ` · locks in ${countdown(f.kickoffAt)}` : ''}
-              </Text>
-            </Card>
+            <View style={[styles.hero, { borderColor: t.border }]}>
+              <ShaderSurface
+                look="clash"
+                animated={!!isFocused}
+                colours={{ home: kitLight(f.home.colour), away: kitLight(f.away.colour) }}
+              />
+              <View style={styles.heroVeil} />
+              <View style={styles.heroBody}>
+                <View style={styles.heroTeams}>
+                  <View style={styles.heroTeam}>
+                    <ClubCrest shortName={f.home.shortName} colour={f.home.colour} size={64} />
+                    <Text style={[styles.heroName, { color: t.text }]}>{f.home.name}</Text>
+                  </View>
+                  <Text style={[styles.heroScore, { color: t.text }]}>
+                    {f.score ? `${f.score.home}–${f.score.away}` : 'VS'}
+                  </Text>
+                  <View style={styles.heroTeam}>
+                    <ClubCrest shortName={f.away.shortName} colour={f.away.colour} size={64} />
+                    <Text style={[styles.heroName, { color: t.text }]}>{f.away.name}</Text>
+                  </View>
+                </View>
+                <Text style={[styles.heroWhen, { color: t.text }]}>
+                  {formatKickoff(f.kickoffAt)}
+                  {f.status === 'scheduled' ? ` · locks in ${countdown(f.kickoffAt)}` : ''}
+                </Text>
+              </View>
+            </View>
             {scheduled && contests.data ? (
               <>
-                <Button
-                  label="Open analysis card"
-                  kind="secondary"
-                  onPress={() =>
-                    router.push({ pathname: '/card/[fixtureId]', params: { fixtureId: id } })
-                  }
-                />
+                <View style={styles.cta}>
+                  <Button
+                    label="Open analysis card"
+                    onPress={() =>
+                      router.push({ pathname: '/card/[fixtureId]', params: { fixtureId: id } })
+                    }
+                  />
+                </View>
                 <SectionTitle>Tournaments</SectionTitle>
                 {contests.data.map((c) => (
                   <ContestCard key={c.id} contest={c} joined={joined.has(c.id)} />
@@ -118,19 +157,16 @@ function ContestCard({ contest: c, joined }: { contest: Contest; joined: boolean
   return (
     <Card>
       <View style={styles.contestTop}>
-        <View style={{ flexShrink: 1 }}>
-          <Text style={[styles.contestName, { color: t.text }]}>{c.name}</Text>
-          <Text style={{ color: t.muted, marginTop: 2 }}>
-            Top prize {formatCoins(c.topPrize)} ·{' '}
-            {paid === 1 ? 'winner takes all' : `top ${paid} win`}
-          </Text>
-        </View>
+        <Text style={[styles.contestName, { color: t.text }]}>{c.name}</Text>
         {c.guaranteed ? <Chip label="Guaranteed" tone="done" /> : null}
       </View>
-      <View style={[styles.contestTop, { marginTop: 12 }]}>
-        <Text style={{ color: t.muted }}>
-          {c.entries} of {c.capacity.toLocaleString('en-US')} joined
-        </Text>
+      <View style={styles.prizeRow}>
+        <View style={{ flexShrink: 1 }}>
+          <Text style={[styles.prize, { color: t.accent }]}>{formatCoins(c.topPrize)}</Text>
+          <Text style={{ color: t.muted, marginTop: 2 }}>
+            Top prize · {paid === 1 ? 'winner takes all' : `top ${paid} win`}
+          </Text>
+        </View>
         {joined ? (
           <Chip label="Joined" tone="done" />
         ) : (
@@ -142,11 +178,42 @@ function ContestCard({ contest: c, joined }: { contest: Contest; joined: boolean
           />
         )}
       </View>
+      <View style={styles.fill}>
+        <Gauge share={c.entries / c.capacity} />
+        <Text style={{ color: t.muted, fontSize: 12, marginTop: 6 }}>
+          {c.entries} of {c.capacity.toLocaleString('en-US')} joined
+        </Text>
+      </View>
     </Card>
   );
 }
 
 const styles = StyleSheet.create({
+  hero: {
+    marginHorizontal: 16,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderRadius: 18,
+    overflow: 'hidden',
+    backgroundColor: '#0c0d12',
+  },
+  heroVeil: { ...StyleSheet.absoluteFill, backgroundColor: 'rgba(5, 5, 8, 0.26)' },
+  heroBody: { paddingVertical: 24, paddingHorizontal: 12 },
+  heroTeams: { flexDirection: 'row', alignItems: 'center' },
+  heroTeam: { flex: 1, alignItems: 'center', gap: 10 },
+  heroName: { fontSize: 15, fontFamily: font.title, textAlign: 'center' },
+  heroScore: { fontSize: 30, fontFamily: font.heavy, marginHorizontal: 8 },
+  heroWhen: { fontSize: 13, textAlign: 'center', marginTop: 16 },
+  cta: { marginHorizontal: 16, marginBottom: 8 },
+  prizeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+    marginTop: 8,
+  },
+  prize: { fontSize: 24, fontFamily: font.display },
+  fill: { marginTop: 14 },
   header: { paddingTop: 16 },
   contestTop: {
     flexDirection: 'row',
@@ -154,11 +221,12 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     gap: 12,
   },
-  contestName: { fontSize: 16, fontWeight: '700' },
+  contestName: { fontSize: 15, fontFamily: font.title, flexShrink: 1 },
   title: { fontSize: 18, fontWeight: '700' },
   section: {
-    fontSize: 13,
-    fontWeight: '600',
+    fontSize: 12,
+    fontFamily: font.title,
+    letterSpacing: 1.2,
     textTransform: 'uppercase',
     marginHorizontal: 16,
     marginTop: 12,

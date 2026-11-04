@@ -3,7 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Link } from 'expo-router';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { api } from '../../src/api';
-import { useTheme } from '../../src/theme';
+import { font, useTheme } from '../../src/theme';
 import type { LookName } from '../../src/shaders/looks';
 import { Card, Chip, Loading, MetalCard, Message, Screen } from '../../src/ui';
 
@@ -134,11 +134,11 @@ const styles = StyleSheet.create({
   content: { paddingTop: 16 },
   spread: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   label: { fontSize: 13, textTransform: 'uppercase', letterSpacing: 0.5 },
-  rating: { fontSize: 44, fontWeight: '700', marginVertical: 4 },
+  rating: { fontSize: 48, fontFamily: font.heavy, marginVertical: 4 },
   track: { height: 6, borderRadius: 3, overflow: 'hidden', marginBottom: 8 },
   fill: { height: 6 },
   note: { marginTop: 8 },
-  heading: { fontSize: 17, fontWeight: '600', marginBottom: 8 },
+  heading: { fontSize: 17, fontFamily: font.title, marginBottom: 8 },
   body: { fontSize: 15, lineHeight: 22 },
   row: {
     flexDirection: 'row',

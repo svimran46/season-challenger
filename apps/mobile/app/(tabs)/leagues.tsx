@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { RefreshControl, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { api, ApiError, type MyEntry } from '../../src/api';
 import { countdown, formatCoins, formatKickoff, ordinal } from '../../src/format';
-import { useTheme } from '../../src/theme';
+import { font, useTheme } from '../../src/theme';
 import { Button, Card, Chip, Loading, Message, Screen, SectionTitle } from '../../src/ui';
 
 export default function TournamentsScreen() {
@@ -118,7 +118,7 @@ function EntryCard({ entry: e }: { entry: MyEntry }) {
 }
 
 const styles = StyleSheet.create({
-  heading: { fontSize: 16, fontWeight: '700' },
+  heading: { fontSize: 16, fontFamily: font.title },
   row: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
   inviteRow: { flexDirection: 'row', gap: 8, marginTop: 12, alignItems: 'center' },
   input: {

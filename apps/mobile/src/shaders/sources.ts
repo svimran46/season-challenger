@@ -192,3 +192,43 @@ half4 main(float2 xy) {
   return finish(c, xy);
 }
 `;
+
+/** Two clubs' colours driven into each other through smoke, burning where they meet. Match cards. */
+export const CLASH = `${COMMON}
+uniform float3 home;
+uniform float3 away;
+
+half4 main(float2 xy) {
+  float2 uv = xy / size;
+  float aspect = size.x / size.y;
+  float t = time * 0.12;
+  float2 p = float2(uv.x * aspect, uv.y) * 2.4;
+
+  // Warped twice over, so the smoke curls rather than showing the noise's square grid.
+  float2 warp = float2(fbm2(p * 0.7 + float2(t, 1.7)), fbm2(p * 0.7 + float2(4.1, -t)));
+  float smokeA = fbm3(p + warp * 2.4 + float2(t, t * 0.4));
+  float smokeB = fbm3(p * 1.25 - warp * 2.0 + float2(-t, 2.7 - t * 0.3));
+  float wobble = (fbm2(float2(uv.y * 3.0, t * 1.4)) - 0.5) * 0.22;
+  float seam = uv.x - 0.5 + (uv.y - 0.5) * 0.28 + wobble;
+
+  float leftPool = smoothstep(0.52, -0.5, seam) * (0.32 + 1.0 * smokeA * smokeA);
+  float rightPool = smoothstep(-0.52, 0.5, seam) * (0.32 + 1.0 * smokeB * smokeB);
+  float3 c = float3(0.012, 0.013, 0.018);
+  c += home * leftPool * 0.62;
+  c += away * rightPool * 0.62;
+
+  float edge = abs(seam);
+  float burn = exp(-edge * 42.0) * (0.45 + 0.9 * smokeA);
+  float halo = exp(-edge * 7.0) * 0.16;
+  c += float3(1.0, 0.86, 0.6) * (burn * 0.75 + halo);
+
+  float2 g = float2(uv.x * aspect * 34.0 - t * 2.0, uv.y * 34.0 + t * 5.0);
+  float2 cell = floor(g);
+  float2 at = fract(g) - 0.5 + (float2(hash(cell), hash(cell + 2.3)) - 0.5) * 0.7;
+  float spark = step(0.86, hash(cell + 5.5)) * smoothstep(0.09, 0.0, length(at));
+  c += float3(1.0, 0.8, 0.5) * spark * exp(-edge * 6.0) * 0.9;
+
+  c *= 0.62 + 0.38 * smoothstep(0.95, 0.15, abs(uv.y - 0.42) * 1.6);
+  return finish(c, xy);
+}
+`;

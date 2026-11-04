@@ -8,7 +8,7 @@ import { googleSignInSupported, useGoogleSignIn } from '../src/google';
 import { GoogleSignInError } from '../src/google.types';
 import { codeRequestError, localNumber, looksValid } from '../src/phone';
 import { ShaderSurface } from '../src/shaders/ShaderSurface';
-import { useTheme } from '../src/theme';
+import { font, useTheme } from '../src/theme';
 import { Button, Card, Loading, Screen } from '../src/ui';
 
 function googleError(error: unknown, phoneOffered: boolean): string {
@@ -201,9 +201,9 @@ function PhoneForm({ primary }: { primary: boolean }) {
 const styles = StyleSheet.create({
   hero: { flexGrow: 1, justifyContent: 'flex-end', paddingTop: 96, paddingBottom: 24 },
   brand: { paddingHorizontal: 24, marginBottom: 20 },
-  kicker: { fontSize: 13, fontWeight: '700', letterSpacing: 2.4, marginBottom: 8 },
-  tagline: { fontSize: 38, lineHeight: 42, fontWeight: '800', letterSpacing: -0.5 },
-  heading: { fontSize: 18, fontWeight: '700', marginBottom: 8 },
+  kicker: { fontSize: 13, fontFamily: font.title, letterSpacing: 2.4, marginBottom: 8 },
+  tagline: { fontSize: 36, lineHeight: 42, fontFamily: font.heavy, letterSpacing: -0.5 },
+  heading: { fontSize: 18, fontFamily: font.title, marginBottom: 8 },
   label: { fontSize: 13, fontWeight: '600', marginTop: 16, marginBottom: 6 },
   divider: { flexDirection: 'row', alignItems: 'center', marginVertical: 20 },
   rule: { flex: 1, height: StyleSheet.hairlineWidth },

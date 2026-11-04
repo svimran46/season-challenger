@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { api, ApiError, type MasteryAnswer, type MasteryCall } from '../../src/api';
 import { formatKickoff } from '../../src/format';
-import { useTheme } from '../../src/theme';
+import { font, useTheme } from '../../src/theme';
 import { Button, Card, Chip, Loading, Message, Screen } from '../../src/ui';
 
 const CONFIDENCE = [
@@ -266,8 +266,8 @@ function RangePicker({
 
 const styles = StyleSheet.create({
   content: { paddingTop: 16, paddingBottom: 32 },
-  title: { fontSize: 20, fontWeight: '700', marginBottom: 4 },
-  prompt: { fontSize: 16, fontWeight: '600', marginBottom: 10 },
+  title: { fontSize: 20, fontFamily: font.display, marginBottom: 4 },
+  prompt: { fontSize: 15, fontFamily: font.title, lineHeight: 21, marginBottom: 10 },
   option: { padding: 12, borderRadius: 10, marginBottom: 8, minHeight: 44 },
   confidence: { flexDirection: 'row', gap: 8, marginTop: 4, flexWrap: 'wrap' },
   chipButton: { paddingVertical: 10, paddingHorizontal: 12, borderRadius: 10, minHeight: 44 },

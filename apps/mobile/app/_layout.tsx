@@ -1,3 +1,9 @@
+import {
+  Sora_600SemiBold,
+  Sora_700Bold,
+  Sora_800ExtraBold,
+  useFonts,
+} from '@expo-google-fonts/sora';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { DarkTheme, Stack, ThemeProvider } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
@@ -6,7 +12,7 @@ import { useState } from 'react';
 import { Platform, StyleSheet, View } from 'react-native';
 import { AuthProvider, useAuth } from '../src/auth';
 import { ShaderSurface } from '../src/shaders/ShaderSurface';
-import { useTheme } from '../src/theme';
+import { font, useTheme } from '../src/theme';
 import { Loading, Screen } from '../src/ui';
 
 // On web, Google sign-in opens a popup that comes back to this app. When this page is that popup,
@@ -15,9 +21,12 @@ import { Loading, Screen } from '../src/ui';
 if (Platform.OS === 'web') WebBrowser.maybeCompleteAuthSession();
 
 export default function RootLayout() {
+  const [fontsLoaded, fontError] = useFonts({ Sora_600SemiBold, Sora_700Bold, Sora_800ExtraBold });
   const [queryClient] = useState(
     () => new QueryClient({ defaultOptions: { queries: { staleTime: 30_000, retry: 1 } } }),
   );
+  // A failed font falls back to the system face, which is better than no app.
+  if (!fontsLoaded && !fontError) return <View style={styles.waiting} />;
   return (
     <QueryClientProvider client={queryClient}>
       <AuthProvider>
@@ -47,6 +56,7 @@ function RootStack() {
           screenOptions={{
             headerStyle: { backgroundColor: t.solid },
             headerTintColor: t.text,
+            headerTitleStyle: { fontFamily: font.title },
             headerShadowVisible: false,
             contentStyle: { backgroundColor: 'transparent' },
             animation: 'fade',
@@ -78,4 +88,7 @@ const navigationTheme = {
   colors: { ...DarkTheme.colors, background: 'transparent' },
 };
 
-const styles = StyleSheet.create({ root: { flex: 1 } });
+const styles = StyleSheet.create({
+  root: { flex: 1 },
+  waiting: { flex: 1, backgroundColor: '#07080b' },
+});

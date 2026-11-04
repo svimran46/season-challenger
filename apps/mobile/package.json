@@ -11,7 +11,9 @@
     "typecheck": "tsc -p tsconfig.json"
   },
   "dependencies": {
+    "@expo-google-fonts/sora": "^0.4.2",
     "@expo/metro-runtime": "~58.0.17",
+    "@expo/vector-icons": "^15.1.1",
     "@react-native-google-signin/google-signin": "^17.0.0",
     "@season/shared": "workspace:*",
     "@shopify/react-native-skia": "2.14.0",
@@ -19,6 +21,7 @@
     "expo": "~58.0.23",
     "expo-auth-session": "~58.0.17",
     "expo-constants": "~58.0.15",
+    "expo-font": "~58.0.11",
     "expo-image-picker": "~58.0.10",
     "expo-linking": "~58.0.16",
     "expo-router": "~58.0.30",

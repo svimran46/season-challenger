@@ -11,7 +11,7 @@ import {
   type WalletActivity,
 } from '../../src/api';
 import { formatCoins, formatDay } from '../../src/format';
-import { useTheme } from '../../src/theme';
+import { font, useTheme } from '../../src/theme';
 import {
   Button,
   Card,
@@ -340,11 +340,11 @@ function ShowAtTill({ voucherId }: { voucherId: string }) {
 const styles = StyleSheet.create({
   content: { paddingTop: 16, paddingBottom: 32 },
   label: { fontSize: 13, fontWeight: '600', textTransform: 'uppercase' },
-  total: { fontSize: 40, fontWeight: '800', marginVertical: 4, fontVariant: ['tabular-nums'] },
+  total: { fontSize: 44, fontFamily: font.heavy, marginVertical: 4, fontVariant: ['tabular-nums'] },
   split: { flexDirection: 'row', gap: 16, marginTop: 8 },
   half: { flex: 1, gap: 2 },
-  amount: { fontSize: 20, fontWeight: '700', fontVariant: ['tabular-nums'] },
-  heading: { fontSize: 16, fontWeight: '700' },
+  amount: { fontSize: 20, fontFamily: font.display, fontVariant: ['tabular-nums'] },
+  heading: { fontSize: 16, fontFamily: font.title },
   rowBetween: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   cost: { fontSize: 20, fontWeight: '800' },
   activity: {

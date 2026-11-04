@@ -13,6 +13,8 @@ export interface ShaderSurfaceProps {
   look: LookName;
   /** False draws one still frame, which costs nothing after that. */
   animated?: boolean;
+  /** Replaces the look's colours, such as the two clubs on a match card. */
+  colours?: Record<string, readonly [number, number, number]>;
   /** Starting time, so two surfaces with one look do not move in step. */
   seed?: number;
 }
@@ -34,8 +36,14 @@ function effectFor(source: string): SkRuntimeEffect {
 const FRAME_MS = 1000 / 24;
 
 /** Paints a look across its parent. Sits behind content and never takes touches. */
-export default function ShaderFill({ look, animated = true, seed = 14 }: ShaderSurfaceProps) {
-  const { source, uniforms, renderScale } = LOOKS[look];
+export default function ShaderFill({
+  look,
+  animated = true,
+  colours,
+  seed = 14,
+}: ShaderSurfaceProps) {
+  const { source, uniforms: base, renderScale } = LOOKS[look];
+  const uniforms = { ...base, ...colours };
   const [size, setSize] = useState({ width: 0, height: 0 });
   const reducedMotion = useReducedMotion();
   const time = useSharedValue(seed);

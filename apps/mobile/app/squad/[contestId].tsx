@@ -198,7 +198,7 @@ export default function SquadScreen() {
           );
         }}
       />
-      <View style={[styles.footer, { backgroundColor: t.surface, borderColor: t.border }]}>
+      <View style={[styles.footer, { backgroundColor: t.solid, borderColor: t.border }]}>
         <Text style={{ color: join.error ? t.live : t.muted, marginBottom: 8 }} numberOfLines={2}>
           {join.error instanceof ApiError
             ? join.error.code === 'contest_full'

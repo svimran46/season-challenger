@@ -18,3 +18,10 @@ export type Theme = typeof theme;
 export function useTheme(): Theme {
   return theme;
 }
+
+/** Display type. A custom face carries its own weight, so these never take a fontWeight. */
+export const font = {
+  title: 'Sora_600SemiBold',
+  display: 'Sora_700Bold',
+  heavy: 'Sora_800ExtraBold',
+};

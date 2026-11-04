@@ -16,7 +16,8 @@
           "cameraPermission": "Season Challenger uses the camera to photograph your ID card or passport for the ID check.",
           "microphonePermission": false
         }
-      ]
+      ],
+      "expo-font"
     ],
     "ios": {
       "bundleIdentifier": "com.seasonchallenger.app"
