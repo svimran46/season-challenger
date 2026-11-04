@@ -74,6 +74,49 @@ describe('FeedSync and PgFeed', () => {
     expect(rows).toHaveLength(2);
   });
 
+  it('adds no row when a live match is polled and nothing changed', async () => {
+    let version = 10;
+    const live: FootballFeed = Object.create(fake);
+    live.getStats = async (id) => {
+      const stats = await fake.getStats(id);
+      return stats && { ...stats, version: (version += 1), isFinal: false };
+    };
+    expect((await new FeedSync(db, live).run()).statsAdded).toBe(12);
+    expect((await new FeedSync(db, live).run()).statsAdded).toBe(0);
+  });
+
+  it('shows only the active season after switching provider', async () => {
+    await new FeedSync(db, fake).run();
+    const other = new FakeFeed({ seasonStart, now: () => now });
+    const renamed: FootballFeed = Object.create(other);
+    renamed.getSeason = async () => ({ ...(await other.getSeason()), id: 'season-real' });
+    renamed.listClubs = async () => [
+      { id: 'real-1', name: 'Real One', shortName: 'RO1', colour: '#000000' },
+      { id: 'real-2', name: 'Real Two', shortName: 'RO2', colour: '#ffffff' },
+    ];
+    renamed.listPlayers = async () => [
+      { id: 'real-p1', clubId: 'real-1', name: 'A', position: 'GK', credits: 5 },
+    ];
+    renamed.listFixtures = async () => [
+      {
+        id: 'real-f1',
+        seasonId: 'season-real',
+        gameweek: 1,
+        homeClubId: 'real-1',
+        awayClubId: 'real-2',
+        kickoffAt: '2026-09-10T14:00:00.000Z',
+        status: 'scheduled',
+      },
+    ];
+    await new FeedSync(db, renamed).run();
+
+    expect((await synced.getSeason()).id).toBe('season-real');
+    expect((await synced.listClubs()).map((c) => c.id)).toEqual(['real-1', 'real-2']);
+    expect((await synced.listPlayers()).map((p) => p.id)).toEqual(['real-p1']);
+    expect((await synced.listFixtures()).map((f) => f.id)).toEqual(['real-f1']);
+    expect(await synced.getFixture('fx-1-1')).toBeUndefined();
+  });
+
   it('lets one of two simultaneous syncs write and skips the other', async () => {
     const results = await Promise.all([new FeedSync(db, fake).run(), new FeedSync(db, fake).run()]);
     expect(results.filter((r) => !r.skipped).length).toBeGreaterThanOrEqual(1);
