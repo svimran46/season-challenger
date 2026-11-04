@@ -1,0 +1,12 @@
+# Keep the image build context small and free of secrets. The API image never needs the app.
+**/node_modules
+**/dist
+**/.expo
+**/coverage
+.git
+.github
+.env
+.env.*
+docs
+*.md
+apps/mobile

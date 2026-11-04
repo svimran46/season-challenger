@@ -3,6 +3,10 @@
   "version": "0.1.0",
   "private": true,
   "description": "Season Challenger REST API.",
+  "files": [
+    "dist",
+    "drizzle"
+  ],
   "scripts": {
     "dev": "tsx watch --env-file-if-exists=../../.env src/main.ts",
     "build": "tsup",
@@ -11,6 +15,7 @@
     "test": "vitest run",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
+    "db:deploy": "node --env-file-if-exists=../../.env dist/migrate.js",
     "partner:create": "tsx --env-file-if-exists=../../.env src/partner/create-partner.ts",
     "test:db": "vitest run --config vitest.db.config.ts"
   },

@@ -22,7 +22,8 @@
       "bundleIdentifier": "com.seasonchallenger.app"
     },
     "android": {
-      "package": "com.seasonchallenger.app"
+      "package": "com.seasonchallenger.app",
+      "versionCode": 1
     },
     "web": {
       "bundler": "metro",

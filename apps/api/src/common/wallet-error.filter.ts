@@ -1,4 +1,10 @@
-import { Catch, HttpStatus, type ArgumentsHost, type ExceptionFilter } from '@nestjs/common';
+import {
+  Catch,
+  HttpStatus,
+  Logger,
+  type ArgumentsHost,
+  type ExceptionFilter,
+} from '@nestjs/common';
 import { WalletError, type WalletErrorCode } from '@season/wallet';
 
 const STATUS: Record<WalletErrorCode, HttpStatus> = {
@@ -28,9 +34,13 @@ const STATUS: Record<WalletErrorCode, HttpStatus> = {
 /** Turns wallet rule failures into replies the app can act on: { error: code, message }. */
 @Catch(WalletError)
 export class WalletErrorFilter implements ExceptionFilter {
+  private readonly logger = new Logger(WalletErrorFilter.name);
+
   catch(error: WalletError, host: ArgumentsHost) {
     const status = STATUS[error.code] ?? HttpStatus.INTERNAL_SERVER_ERROR;
     const internal = status === HttpStatus.INTERNAL_SERVER_ERROR;
+    // These mean a bug, so someone has to be able to find out what happened.
+    if (internal) this.logger.error(`${error.code}: ${error.message}`, error.stack);
     host
       .switchToHttp()
       .getResponse<{ status(code: number): { json(body: unknown): void } }>()
