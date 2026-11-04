@@ -6,7 +6,7 @@
 
 import { Skia, type SkRuntimeEffect } from '@shopify/react-native-skia';
 
-const COMMON = /* sksl */ `
+export const COMMON = /* sksl */ `
 float hash(float2 p) {
   p = fract(p * float2(123.34, 456.21));
   p += dot(p, p + 45.32);

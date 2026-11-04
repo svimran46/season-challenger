@@ -10,6 +10,14 @@ import {
   TierSample,
   WalletHeaderSample,
 } from './cards';
+import {
+  AnalysisSample,
+  CaptainSample,
+  DailyRewardSample,
+  KickoffSample,
+  SeasonProgressSample,
+  SignInHeroSample,
+} from './extraCards';
 import { ShaderMotion } from './ShaderView';
 
 /** A gallery of shader effects on sample cards, to choose which ones go into the real screens. */
@@ -74,6 +82,35 @@ export default function ShaderLab() {
         <SectionTitle>Match card · floodlit pitch</SectionTitle>
         <View style={styles.pad}>
           <MatchSample />
+        </View>
+        <SectionTitle>Daily reward · sunburst</SectionTitle>
+        <View style={styles.pad}>
+          <DailyRewardSample />
+        </View>
+
+        <SectionTitle>Season progress · liquid fill</SectionTitle>
+        <View style={styles.pad}>
+          <SeasonProgressSample />
+        </View>
+
+        <SectionTitle>Captain pick · flames</SectionTitle>
+        <View style={styles.pad}>
+          <CaptainSample />
+        </View>
+
+        <SectionTitle>Analysis card · water light</SectionTitle>
+        <View style={styles.pad}>
+          <AnalysisSample />
+        </View>
+
+        <SectionTitle>Kick-off countdown · radar pulse</SectionTitle>
+        <View style={styles.pad}>
+          <KickoffSample />
+        </View>
+
+        <SectionTitle>Sign-in hero · halftone wave</SectionTitle>
+        <View style={styles.pad}>
+          <SignInHeroSample />
         </View>
       </ScrollView>
     </ShaderMotion.Provider>
