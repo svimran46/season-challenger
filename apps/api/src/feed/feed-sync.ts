@@ -1,7 +1,6 @@
 import { FakeFeed, type FootballFeed } from '@season/feed';
 import type { StatsSnapshot } from '@season/shared';
-import { isDeepStrictEqual } from 'node:util';
-import { and, desc, eq, inArray, min, ne, sql } from 'drizzle-orm';
+import { and, eq, inArray, min, ne, sql } from 'drizzle-orm';
 import type { Database } from '../db/client';
 import { club, fixture, player, season, statsSnapshot } from '../db/schema';
 
@@ -104,20 +103,6 @@ export class FeedSync {
       let statsAdded = 0;
       for (const s of stats) {
         const { fixtureId, version, isFinal, ...payload } = s;
-        // A live provider is polled every tick; only a change in the numbers earns a new row.
-        const [latest] = await tx
-          .select({ isFinal: statsSnapshot.isFinal, payload: statsSnapshot.payload })
-          .from(statsSnapshot)
-          .where(eq(statsSnapshot.fixtureId, fixtureId))
-          .orderBy(desc(statsSnapshot.version))
-          .limit(1);
-        if (
-          latest &&
-          latest.isFinal === isFinal &&
-          isDeepStrictEqual(latest.payload, JSON.parse(JSON.stringify(payload)))
-        ) {
-          continue;
-        }
         const added = await tx
           .insert(statsSnapshot)
           .values({ fixtureId, version, isFinal, payload })

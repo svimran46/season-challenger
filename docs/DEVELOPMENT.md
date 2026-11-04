@@ -5,7 +5,7 @@ Season Challenger is a pnpm monorepo in TypeScript.
 | Path              | What it is                                                                                                                     |
 | ----------------- | ------------------------------------------------------------------------------------------------------------------------------ |
 | `packages/shared` | Domain types and pure game rules: squad validation, fantasy points, contest ranking, Season Mastery grading, ratings and tiers |
-| `packages/feed`   | `FootballFeed` interface, `FakeFeed` (offline fictional league) and `ApiFootballFeed` (real data)                              |
+| `packages/feed`   | `FootballFeed` interface plus `FakeFeed`, an offline league of eight fictional clubs                                           |
 | `packages/wallet` | Coin ledger, rewards, tournament categories, prize tables and settlement, voucher redemption rules                             |
 | `apps/api`        | NestJS REST API and the Drizzle database schema                                                                                |
 | `apps/mobile`     | Expo (React Native) app with Expo Router                                                                                       |
@@ -40,35 +40,6 @@ always finished fixtures with points and upcoming fixtures with open deadlines.
 With `DATABASE_URL` set, the API reads football data from Postgres and a worker inside the API
 syncs it from the provider every `WORKER_SECONDS`. Only the sync calls the provider. Stats
 snapshots are append-only by version, and an advisory lock lets one instance write at a time.
-
-## The real feed: API-Football
-
-The launch feed is [API-Football](https://www.api-football.com) (api-sports.io, v3) on the
-Premier League (league 39), season 2026/27. Set:
-
-```
-FOOTBALL_FEED=api-football
-API_FOOTBALL_KEY=<your key>
-API_FOOTBALL_LEAGUE=39
-API_FOOTBALL_SEASON=2026
-```
-
-- Plan: the free plan (100 requests a day) is limited in which seasons it covers, so live play needs Pro
-  (about $19 a month, 7,500 requests a day). Development and tests use the fake league or stubs.
-- Without a key the API falls back to the fake league with a warning; in production it refuses
-  to start.
-- Ids are the provider's with a prefix (`af-t-`, `af-p-`, `af-f-`). Switching from the fake league
-  keeps the old rows, but reads only show the active season and its clubs. Tournaments created
-  on fake matches never settle, so use a fresh database for the switch.
-- Requests are cached: league and clubs for a day, squads 12 hours, last-season ratings a day,
-  the fixture list 15 minutes (1 minute around matches), each match's stats 2 minutes. A season
-  costs well under 1,000 requests on a quiet day and a few thousand on a full matchday.
-- Prices: each position has a credit band; where a player sits in it comes from last season's
-  minutes-weighted rating in the same league. Players with under 450 minutes get the low default.
-- Goals conceded and own goals are not given per player; they are replayed from match events
-  (substitutions, red cards, goals, VAR cancellations).
-- A match is final (and tournaments pay out) 3 hours after kick-off, once the provider's
-  corrections have settled. Postponed, cancelled and abandoned matches stay scheduled.
 
 ## API
 

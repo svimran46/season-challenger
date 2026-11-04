@@ -26,11 +26,7 @@ export class PgFeed implements FootballFeed {
   }
 
   async listClubs(): Promise<Club[]> {
-    const rows = await this.db
-      .select()
-      .from(club)
-      .where(await this.activeClubs())
-      .orderBy(asc(club.id));
+    const rows = await this.db.select().from(club).orderBy(asc(club.id));
     return rows.map((r) => ({
       id: r.id,
       name: r.name,
@@ -44,12 +40,7 @@ export class PgFeed implements FootballFeed {
     const rows = await this.db
       .select()
       .from(player)
-      .where(
-        and(
-          clubIds ? inArray(player.clubId, [...clubIds]) : undefined,
-          await this.activeClubs(player.clubId),
-        ),
-      )
+      .where(clubIds ? inArray(player.clubId, [...clubIds]) : undefined)
       .orderBy(asc(player.clubId), asc(player.id));
     return rows.map((r) => ({
       id: r.id,
@@ -66,7 +57,6 @@ export class PgFeed implements FootballFeed {
       .from(fixture)
       .where(
         and(
-          inArray(fixture.seasonId, this.activeSeasonIds()),
           filter.gameweek === undefined ? undefined : eq(fixture.gameweek, filter.gameweek),
           filter.status === undefined ? undefined : eq(fixture.status, filter.status),
         ),
@@ -76,10 +66,7 @@ export class PgFeed implements FootballFeed {
   }
 
   async getFixture(fixtureId: string): Promise<Fixture | undefined> {
-    const [row] = await this.db
-      .select()
-      .from(fixture)
-      .where(and(eq(fixture.id, fixtureId), inArray(fixture.seasonId, this.activeSeasonIds())));
+    const [row] = await this.db.select().from(fixture).where(eq(fixture.id, fixtureId));
     return row && toFixture(row);
   }
 
@@ -97,31 +84,6 @@ export class PgFeed implements FootballFeed {
       isFinal: row.isFinal,
       ...(row.payload as StatsPayload),
     };
-  }
-
-  /**
-   * Switching provider (say from the fake league to the real one) leaves the old season's rows
-   * in place for history; reads only show the active season and the clubs playing in it.
-   */
-  private activeSeasonIds() {
-    return this.db.select({ id: season.id }).from(season).where(eq(season.isActive, true));
-  }
-
-  private async activeClubs(column: typeof club.id | typeof player.clubId = club.id) {
-    const playing = () =>
-      this.db
-        .select({ id: fixture.homeClubId })
-        .from(fixture)
-        .where(inArray(fixture.seasonId, this.activeSeasonIds()))
-        .union(
-          this.db
-            .select({ id: fixture.awayClubId })
-            .from(fixture)
-            .where(inArray(fixture.seasonId, this.activeSeasonIds())),
-        );
-    // Before any fixture is synced there is nothing to narrow by.
-    const [any] = await playing().limit(1);
-    return any ? inArray(column, playing()) : undefined;
   }
 }
 
