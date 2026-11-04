@@ -1,3 +1,4 @@
+import { parseVaultKey } from './kyc/vault';
 import { z } from 'zod';
 
 const blankToUndefined = (value: unknown) => (value === '' ? undefined : value);
@@ -26,6 +27,16 @@ const schema = z.object({
   ),
   /** Set when the API runs behind a proxy or load balancer, so rate limits see client IPs. */
   TRUST_PROXY: z.preprocess(blankToUndefined, z.enum(['true', 'false']).optional()),
+  /** Key for hashing ID document numbers (one ID, one account). */
+  ID_HASH_SECRET: z.preprocess(blankToUndefined, z.string().optional()),
+  /** Base64 of 32 random bytes: encrypts ID photos and typed document numbers at rest. */
+  KYC_ENCRYPTION_KEY: z.preprocess(blankToUndefined, z.string().optional()),
+  /** Directory for encrypted ID photos. Unset in development keeps them in memory. */
+  KYC_STORAGE_DIR: z.preprocess(blankToUndefined, z.string().optional()),
+  /** Header value for the ID review page and routes; unset turns review off. */
+  KYC_REVIEWER_TOKEN: z.preprocess(blankToUndefined, z.string().optional()),
+  /** Days after the decision before ID photos are deleted. */
+  KYC_RETENTION_DAYS: z.coerce.number().int().min(1).max(3650).default(90),
 });
 
 export interface Config {
@@ -40,6 +51,13 @@ export interface Config {
   googleWebClientId: string | undefined;
   /** Phone codes are offered only when they can reach a phone (not console in production). */
   phoneSignIn: boolean;
+  kyc: {
+    /** Decoded KYC_ENCRYPTION_KEY; undefined in development (a fixed dev key is used). */
+    encryptionKey: Buffer | undefined;
+    storageDir: string | undefined;
+    reviewerToken: string | undefined;
+    retentionDays: number;
+  };
 }
 
 /** Reads the environment once at boot and refuses to start on a setting that would lose data. */
@@ -68,6 +86,28 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
       'No way to sign in: set GOOGLE_WEB_CLIENT_ID, or a real SMS_PROVIDER for phone codes.',
     );
   }
+  let encryptionKey: Buffer | undefined;
+  if (parsed.KYC_ENCRYPTION_KEY) {
+    try {
+      encryptionKey = parseVaultKey(parsed.KYC_ENCRYPTION_KEY);
+    } catch {
+      problems.push('KYC_ENCRYPTION_KEY must be base64 of 32 random bytes.');
+    }
+  }
+  if (parsed.NODE_ENV === 'production') {
+    if (!parsed.ID_HASH_SECRET || parsed.ID_HASH_SECRET.length < 32) {
+      problems.push('ID_HASH_SECRET must be a random value of 32+ characters in production.');
+    }
+    if (!parsed.KYC_ENCRYPTION_KEY) {
+      problems.push('KYC_ENCRYPTION_KEY must be set in production: it encrypts ID photos.');
+    }
+    if (!parsed.KYC_STORAGE_DIR) {
+      problems.push('KYC_STORAGE_DIR must be set in production: without it ID photos are lost.');
+    }
+    if (parsed.KYC_REVIEWER_TOKEN && parsed.KYC_REVIEWER_TOKEN.length < 32) {
+      problems.push('KYC_REVIEWER_TOKEN must be a random value of 32+ characters in production.');
+    }
+  }
   if (problems.length > 0) throw new Error(`Bad configuration:\n- ${problems.join('\n- ')}`);
   return {
     port: parsed.PORT,
@@ -86,5 +126,11 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     trustProxy: parsed.TRUST_PROXY === 'true',
     googleWebClientId: parsed.GOOGLE_WEB_CLIENT_ID,
     phoneSignIn,
+    kyc: {
+      encryptionKey,
+      storageDir: parsed.KYC_STORAGE_DIR,
+      reviewerToken: parsed.KYC_REVIEWER_TOKEN,
+      retentionDays: parsed.KYC_RETENTION_DAYS,
+    },
   };
 }

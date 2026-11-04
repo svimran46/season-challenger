@@ -182,6 +182,9 @@ describe('sign-in configuration', () => {
       NODE_ENV: 'production',
       DATABASE_URL: 'postgres://x@localhost/db',
       AUTH_SECRET: 'x'.repeat(32),
+      ID_HASH_SECRET: 'y'.repeat(32),
+      KYC_ENCRYPTION_KEY: Buffer.alloc(32, 7).toString('base64'),
+      KYC_STORAGE_DIR: '/var/lib/season/kyc',
     };
     expect(() =>
       loadConfig({ NODE_ENV: 'production', DATABASE_URL: 'postgres://x@localhost/db' }),

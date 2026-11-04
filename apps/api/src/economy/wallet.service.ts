@@ -10,7 +10,6 @@ import {
   type LedgerStore,
   type Transaction,
 } from '@season/wallet';
-import { createHmac } from 'node:crypto';
 import { CLOCK, ECONOMY_REPOSITORY, LEDGER_STORE, type Clock } from '../common/tokens';
 import { IdentityInUseError, type EconomyRepository, type PlayerProfile } from './stores';
 
@@ -123,24 +122,17 @@ export class WalletService {
   }
 
   /**
-   * Development stand-in for the ID-check provider's callback. The document number is stored
-   * only as a keyed hash, and one document can verify one account.
+   * Records a passed ID check on the player. The document number arrives as a keyed hash
+   * (kyc/identity-hash.ts), and one document can verify one account.
    */
-  async recordVerification(userId: string, input: { birthDate: string; documentNumber: string }) {
+  async recordVerification(userId: string, input: { birthDate: string; idDocumentHash: string }) {
     const profile = await this.ensurePlayer(userId);
     if (!isCalendarDate(input.birthDate)) throw new ConflictException('Bad birth date.');
-    const secret = process.env.ID_HASH_SECRET;
-    if (!secret && process.env.NODE_ENV === 'production') {
-      throw new Error('ID_HASH_SECRET must be set in production.');
-    }
-    const hash = createHmac('sha256', secret ?? 'dev-only-secret')
-      .update(input.documentNumber.replace(/\s+/g, '').toUpperCase())
-      .digest('hex');
     const verifiedAt = this.clock().toISOString();
     try {
       await this.repo.recordVerification(profile.id, {
         birthDate: input.birthDate,
-        idDocumentHash: hash,
+        idDocumentHash: input.idDocumentHash,
         idVerifiedAt: verifiedAt,
       });
     } catch (error) {
@@ -148,5 +140,15 @@ export class WalletService {
       throw new ConflictException({ error: 'identity_in_use', message: error.message });
     }
     return { verified: true, birthDate: input.birthDate, verifiedAt };
+  }
+
+  /** The player's profile, created with the sign-up bonus on first sight. */
+  profile(userId: string): Promise<PlayerProfile> {
+    return this.ensurePlayer(userId);
+  }
+
+  /** The player whose verified ID has this keyed hash, if any. */
+  async playerWithDocument(hash: string): Promise<PlayerProfile | undefined> {
+    return this.repo.findPlayerByDocumentHash(hash);
   }
 }

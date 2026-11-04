@@ -37,7 +37,7 @@ const iso = (d: Date | null) => (d ? d.toISOString() : null);
 const toDate = (s: string | null) => (s === null ? null : new Date(s));
 
 /** Postgres unique_violation, whether or not drizzle wrapped the driver error. */
-function isUniqueViolation(error: unknown): boolean {
+export function isUniqueViolation(error: unknown): boolean {
   for (let e: unknown = error; e && typeof e === 'object'; e = (e as { cause?: unknown }).cause) {
     if ((e as { code?: unknown }).code === '23505') return true;
   }

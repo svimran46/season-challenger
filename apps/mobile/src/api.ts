@@ -7,6 +7,7 @@ import type {
   SquadPick,
   SquadValidation,
 } from '@season/shared';
+import { Platform } from 'react-native';
 import { clearToken, currentToken } from './session';
 
 const BASE_URL = process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:3000';
@@ -52,7 +53,8 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`${BASE_URL}${path}`, {
     ...init,
     headers: {
-      'Content-Type': 'application/json',
+      // FormData sets its own multipart Content-Type, with the boundary.
+      ...(init?.body instanceof FormData ? {} : { 'Content-Type': 'application/json' }),
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
       ...init?.headers,
     },
@@ -210,6 +212,66 @@ export interface Me {
   email: string | null;
 }
 
+export type DocumentType = 'nid' | 'passport';
+/** front_back: one photo per side. single: the whole document in one photo. */
+export type CaptureLayout = 'front_back' | 'single';
+export type ImageSide = 'front' | 'back' | 'single';
+
+export interface VerificationStatus {
+  status: 'unverified' | 'pending' | 'approved' | 'rejected';
+  verifiedAt: string | null;
+  submission: {
+    id: string;
+    documentType: DocumentType;
+    layout: CaptureLayout;
+    submittedAt: string;
+    reviewedAt: string | null;
+    rejectionReason: string | null;
+  } | null;
+}
+
+/** A photo picked on the device: a file:// URI on a phone, a blob: or data: URI on the web. */
+export interface PickedImage {
+  uri: string;
+  /** e.g. image/jpeg; guessed from the file name when the picker does not say. */
+  mimeType?: string | null;
+  fileName?: string | null;
+}
+
+export interface IdDocumentsInput {
+  documentType: DocumentType;
+  layout: CaptureLayout;
+  birthDate: string;
+  documentNumber: string;
+  images: Partial<Record<ImageSide, PickedImage>>;
+}
+
+function imageType(image: PickedImage): string {
+  if (image.mimeType) return image.mimeType;
+  const ext = /\.(\w+)$/.exec(image.fileName ?? image.uri)?.[1]?.toLowerCase();
+  return { png: 'image/png', webp: 'image/webp', heic: 'image/heic' }[ext ?? ''] ?? 'image/jpeg';
+}
+
+async function idDocumentsForm(input: IdDocumentsInput): Promise<FormData> {
+  const form = new FormData();
+  form.append('documentType', input.documentType);
+  form.append('layout', input.layout);
+  form.append('birthDate', input.birthDate);
+  form.append('documentNumber', input.documentNumber);
+  for (const [side, image] of Object.entries(input.images)) {
+    if (!image) continue;
+    const type = imageType(image);
+    const name = `${side}.${type.split('/')[1] ?? 'jpg'}`;
+    if (Platform.OS === 'web') {
+      form.append(side, await (await fetch(image.uri)).blob(), name);
+    } else {
+      // React Native's FormData uploads the file at `uri`.
+      form.append(side, { uri: image.uri, name, type } as unknown as Blob);
+    }
+  }
+  return form;
+}
+
 export const api = {
   authMethods: () =>
     request<AuthMethods>('/v1/auth/methods').catch((error: unknown) => {
@@ -246,8 +308,12 @@ export const api = {
       '/v1/me/check-in',
       post(),
     ),
-  verify: (birthDate: string, documentNumber: string) =>
-    request<{ verified: true }>('/v1/me/verification', post({ birthDate, documentNumber })),
+  verificationStatus: () => request<VerificationStatus>('/v1/me/verification'),
+  submitIdDocuments: async (input: IdDocumentsInput) =>
+    request<VerificationStatus>('/v1/me/verification/documents', {
+      method: 'POST',
+      body: await idDocumentsForm(input),
+    }),
 
   contests: (fixtureId: string) =>
     request<Contest[]>(`/v1/contests?fixtureId=${encodeURIComponent(fixtureId)}`),

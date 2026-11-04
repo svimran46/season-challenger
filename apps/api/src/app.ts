@@ -25,6 +25,10 @@ import { createFeed, FeedModule } from './feed.module';
 import { FixturesController } from './fixtures/fixtures.controller';
 import { FixturesService } from './fixtures/fixtures.service';
 import { HealthController } from './health.controller';
+import { KycModule } from './kyc/kyc.module';
+import type { KycSettings } from './kyc/kyc.service';
+import type { DocumentVault } from './kyc/kyc.types';
+import { PgKycStore } from './kyc/pg-kyc.store';
 import { PgLedgerStore } from './ledger/pg-ledger.store';
 import { SquadsController } from './squads/squads.controller';
 import { Worker } from './worker';
@@ -49,6 +53,13 @@ export interface AppModuleOptions {
   workerSeconds: number;
   offers?: readonly VoucherOffer[];
   auth?: AuthAppOptions;
+  kyc?: KycAppOptions;
+}
+
+export interface KycAppOptions {
+  /** Where ID photos go; encrypted in memory unless given. */
+  vault?: DocumentVault;
+  settings?: Partial<KycSettings>;
 }
 
 export interface AuthAppOptions {
@@ -64,6 +75,12 @@ export class AppModule {
   static register(options: AppModuleOptions): DynamicModule {
     const close = options.database?.close;
     const db = options.database?.db;
+    // One instance, shared with the KYC module, which verifies players through the wallet.
+    const economy = EconomyModule.register({
+      clock: options.clock,
+      offers: options.offers,
+      ...(db ? { ledger: new PgLedgerStore(db), repository: new PgEconomyRepository(db) } : {}),
+    });
     return {
       module: AppModule,
       imports: [
@@ -75,10 +92,13 @@ export class AppModule {
           ...(db ? { store: new PgAuthStore(db) } : {}),
         }),
         FeedModule.register(options.feed, options.database?.db),
-        EconomyModule.register({
+        economy,
+        KycModule.register({
           clock: options.clock,
-          offers: options.offers,
-          ...(db ? { ledger: new PgLedgerStore(db), repository: new PgEconomyRepository(db) } : {}),
+          economy,
+          vault: options.kyc?.vault,
+          settings: options.kyc?.settings,
+          ...(db ? { store: new PgKycStore(db) } : {}),
         }),
       ],
       controllers: [HealthController, FixturesController, SquadsController],
@@ -104,6 +124,8 @@ export interface CreateAppOptions {
   offers?: readonly VoucherOffer[];
   /** Phone sign-in: SMS sender and limits. Tests pass a MemorySmsSender to read codes back. */
   auth?: AuthAppOptions;
+  /** ID check: photo storage, encryption key and reviewer token. */
+  kyc?: KycAppOptions;
   logger?: false;
 }
 
@@ -119,11 +141,12 @@ export async function createApp(options: CreateAppOptions = {}): Promise<INestAp
       workerSeconds: options.workerSeconds ?? 60,
       offers: options.offers,
       auth: options.auth,
+      kyc: options.kyc,
     }),
     { logger: options.logger === false ? false : undefined },
   );
   app.enableCors();
-  app.setGlobalPrefix('v1', { exclude: ['health'] });
+  app.setGlobalPrefix('v1', { exclude: ['health', 'review'] });
   app.useGlobalFilters(new WalletErrorFilter());
   app.enableShutdownHooks();
   return app;

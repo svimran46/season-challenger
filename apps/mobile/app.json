@@ -6,7 +6,18 @@
     "version": "0.1.0",
     "orientation": "portrait",
     "userInterfaceStyle": "automatic",
-    "plugins": ["expo-router", "@react-native-google-signin/google-signin"],
+    "plugins": [
+      "expo-router",
+      "@react-native-google-signin/google-signin",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Season Challenger needs your photos so you can add pictures of your ID card or passport for the ID check.",
+          "cameraPermission": "Season Challenger uses the camera to photograph your ID card or passport for the ID check.",
+          "microphonePermission": false
+        }
+      ]
+    ],
     "ios": {
       "bundleIdentifier": "com.seasonchallenger.app"
     },

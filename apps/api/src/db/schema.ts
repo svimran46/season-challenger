@@ -16,6 +16,7 @@ import {
   text,
   timestamp,
   unique,
+  uniqueIndex,
   uuid,
 } from 'drizzle-orm/pg-core';
 
@@ -166,6 +167,46 @@ export const appUser = pgTable('app_user', {
   redemptionsBlocked: boolean('redemptions_blocked').notNull().default(false),
   createdAt: createdAt(),
 });
+
+// ---------------------------------------------------------------- ID check
+
+/**
+ * Photos of a national ID card or passport sent for the ID check (docs/KYC.md). The photos are
+ * in the encrypted DocumentVault; `images` holds their keys. No foreign key to app_user, like
+ * the sign-in tables. One pending submission per player.
+ */
+export const idSubmission = pgTable(
+  'id_submission',
+  {
+    id: text('id').primaryKey(),
+    userId: text('user_id').notNull(),
+    /** nid | passport */
+    documentType: text('document_type').notNull(),
+    /** front_back | single */
+    layout: text('layout').notNull(),
+    /** pending | approved | rejected */
+    status: text('status').notNull(),
+    /** [{ side, key, contentType, bytes }] */
+    images: jsonb('images').notNull(),
+    birthDate: date('birth_date').notNull(),
+    /** The typed document number, encrypted; wiped once decided. */
+    documentNumberSealed: text('document_number_sealed'),
+    /** Keyed hash of the document number. */
+    documentHash: text('document_hash').notNull(),
+    submittedAt: timestamp('submitted_at', { withTimezone: true }).notNull(),
+    reviewedAt: timestamp('reviewed_at', { withTimezone: true }),
+    reviewedBy: text('reviewed_by'),
+    rejectionReason: text('rejection_reason'),
+    imagesPurgedAt: timestamp('images_purged_at', { withTimezone: true }),
+  },
+  (t) => [
+    index('id_submission_user_idx').on(t.userId, t.submittedAt),
+    index('id_submission_status_idx').on(t.status, t.submittedAt),
+    uniqueIndex('id_submission_one_pending_uq')
+      .on(t.userId)
+      .where(sql`${t.status} = 'pending'`),
+  ],
+);
 
 // ---------------------------------------------------------------- phone sign-in
 

@@ -114,7 +114,9 @@ In development (`AUTH_MODE=dev`, the default outside production) the API also ac
 | GET    | `/v1/me/wallet`                 | Bonus and won coins, check-in streak; first call pays the 500 bonus |
 | GET    | `/v1/me/wallet/activity`        | Coin history, newest first                                          |
 | POST   | `/v1/me/check-in`               | Daily reward, once per Dhaka calendar day                           |
-| POST   | `/v1/me/verification`           | Dev stand-in for the ID-check provider (birth date, document no.)   |
+| GET    | `/v1/me/verification`           | ID check status: unverified, pending, approved or rejected          |
+| POST   | `/v1/me/verification/documents` | Upload NID or passport photos (front and back, or one photo)        |
+| POST   | `/v1/me/verification`           | Dev only (404 outside `AUTH_MODE=dev`): verify at once from details |
 | GET    | `/v1/me/entries`                | Your tournament entries with points, rank and prize                 |
 | GET    | `/v1/me/vouchers`               | Your vouchers with status                                           |
 | GET    | `/v1/contests?fixtureId=`       | Public tournaments for a match; full ones are replaced by a copy    |
@@ -128,6 +130,11 @@ In development (`AUTH_MODE=dev`, the default outside production) the API also ac
 Tournaments lock at kick-off (cancelled and refunded if they did not reach their minimum) and
 pay out when the match is final. The worker does this every `WORKER_SECONDS`, and reads do it
 too, so a tournament never waits on a tick.
+
+### ID check
+
+Players upload their ID for review; set `KYC_REVIEWER_TOKEN` and open `/review` to approve or
+reject. Photos are encrypted at rest. See [KYC.md](KYC.md).
 
 ### Where the economy is stored
 

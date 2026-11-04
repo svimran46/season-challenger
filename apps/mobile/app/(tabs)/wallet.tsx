@@ -52,6 +52,12 @@ export default function WalletScreen() {
   const offers = useQuery({ queryKey: ['offers', category], queryFn: () => api.offers(category) });
   const vouchers = useQuery({ queryKey: ['my-vouchers'], queryFn: api.myVouchers });
   const activity = useQuery({ queryKey: ['activity'], queryFn: () => api.activity(10) });
+  const idCheck = useQuery({
+    queryKey: ['verification'],
+    queryFn: api.verificationStatus,
+    enabled: wallet.data?.verified === false,
+  });
+  const idState = idCheck.data?.status;
   const refreshAll = () => qc.invalidateQueries();
 
   const checkIn = useMutation({ mutationFn: api.checkIn, onSuccess: refreshAll });
@@ -127,12 +133,32 @@ export default function WalletScreen() {
         />
         {!w.verified ? (
           <Card>
-            <Text style={[styles.heading, { color: t.text }]}>Verify your ID to redeem</Text>
+            <Text style={[styles.heading, { color: t.text }]}>
+              {idState === 'pending'
+                ? 'Your ID is being checked'
+                : idState === 'rejected'
+                  ? 'Your ID check needs new photos'
+                  : 'Verify your ID to redeem'}
+            </Text>
             <Text style={{ color: t.muted, marginTop: 4, marginBottom: 12 }}>
-              Vouchers are for players aged 18 and over, one account per person.
+              {idState === 'pending'
+                ? 'We usually finish within a day. Vouchers unlock once it passes.'
+                : idState === 'rejected'
+                  ? (idCheck.data?.submission?.rejectionReason ?? 'Please send your ID again.')
+                  : 'Vouchers are for players aged 18 and over, one account per person.'}
             </Text>
             <Link href="/verify" asChild>
-              <Button label="Verify ID" kind="secondary" onPress={() => undefined} />
+              <Button
+                label={
+                  idState === 'pending'
+                    ? 'See status'
+                    : idState === 'rejected'
+                      ? 'Try again'
+                      : 'Verify ID'
+                }
+                kind="secondary"
+                onPress={() => undefined}
+              />
             </Link>
           </Card>
         ) : null}

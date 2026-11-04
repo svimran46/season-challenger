@@ -4,6 +4,8 @@ import { GoogleIdTokenVerifier } from './auth/google';
 import { ConsoleSmsSender, SslWirelessSmsSender, type SmsSender } from './auth/sms';
 import { loadConfig } from './config';
 import { createDatabase } from './db/client';
+import { DEV_KYC_KEY } from './kyc/kyc.module';
+import { DiskBlobBackend, EncryptedVault, MemoryBlobBackend } from './kyc/vault';
 
 async function main() {
   const config = loadConfig();
@@ -12,6 +14,10 @@ async function main() {
     config.sms.provider === 'sslwireless'
       ? new SslWirelessSmsSender(config.sms)
       : new ConsoleSmsSender();
+  const kycKey = config.kyc.encryptionKey ?? DEV_KYC_KEY;
+  const vault = config.kyc.storageDir
+    ? new EncryptedVault(new DiskBlobBackend(config.kyc.storageDir), kycKey, 'disk')
+    : new EncryptedVault(new MemoryBlobBackend(), kycKey, 'memory');
   const app = (await createApp({
     database,
     workerSeconds: config.workerSeconds,
@@ -21,6 +27,14 @@ async function main() {
       google: config.googleWebClientId
         ? new GoogleIdTokenVerifier(config.googleWebClientId)
         : undefined,
+    },
+    kyc: {
+      vault,
+      settings: {
+        sealKey: kycKey,
+        reviewerToken: config.kyc.reviewerToken,
+        retentionDays: config.kyc.retentionDays,
+      },
     },
   })) as NestExpressApplication;
   if (config.trustProxy) app.set('trust proxy', true);
@@ -33,7 +47,9 @@ async function main() {
       config.phoneSignIn ? `phone codes via ${sms.name}` : '',
     ]
       .filter(Boolean)
-      .join(', ')})`,
+      .join(', ')}; ID photos in ${vault.name}${
+      config.kyc.reviewerToken ? ', ID review at /review' : ''
+    })`,
   );
 }
 

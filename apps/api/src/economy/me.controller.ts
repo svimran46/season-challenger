@@ -1,7 +1,18 @@
-import { Body, Controller, Get, HttpCode, Inject, Post, Query, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  HttpCode,
+  Inject,
+  NotFoundException,
+  Post,
+  Query,
+  UseGuards,
+} from '@nestjs/common';
 import { z } from 'zod';
-import { CurrentUser, SignedInGuard } from '../common/auth';
+import { authMode, CurrentUser, SignedInGuard } from '../common/auth';
 import { ZodPipe } from '../common/zod.pipe';
+import { documentHash } from '../kyc/identity-hash';
 import { ContestsService } from './contests.service';
 import { VouchersService } from './vouchers.service';
 import { WalletService } from './wallet.service';
@@ -41,14 +52,21 @@ export class MeController {
     return this.wallet.checkIn(userId);
   }
 
-  /** Development stand-in for the ID-check provider. Production receives its callback instead. */
+  /**
+   * Development shortcut: verifies at once from typed details, for tests and scripts. Off (404)
+   * unless AUTH_MODE is dev, so production players always go through the document upload.
+   */
   @Post('verification')
   @HttpCode(200)
   verify(
     @CurrentUser() userId: string,
     @Body(new ZodPipe(verificationBody)) body: z.infer<typeof verificationBody>,
   ) {
-    return this.wallet.recordVerification(userId, body);
+    if (authMode() !== 'dev') throw new NotFoundException();
+    return this.wallet.recordVerification(userId, {
+      birthDate: body.birthDate,
+      idDocumentHash: documentHash(body.documentNumber),
+    });
   }
 
   @Get('entries')
