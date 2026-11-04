@@ -68,6 +68,11 @@ export default function MatchesScreen() {
 function FixtureCard({ fixture }: { fixture: FixtureSummary }) {
   const t = useTheme();
   const scheduled = fixture.status === 'scheduled';
+  const card = useQuery({
+    queryKey: ['mastery', 'card', fixture.id],
+    queryFn: () => api.masteryCard(fixture.id),
+    enabled: scheduled,
+  });
   return (
     <Link href={{ pathname: '/fixture/[id]', params: { id: fixture.id } }} asChild>
       <Pressable>
@@ -99,7 +104,10 @@ function FixtureCard({ fixture }: { fixture: FixtureSummary }) {
           {scheduled ? (
             <View style={[styles.row, styles.chips]}>
               <Chip label="Squad: to do" tone="todo" />
-              <Chip label="Analysis card: to do" tone="todo" />
+              <Chip
+                label={card.data?.submittedAt ? 'Analysis card: done' : 'Analysis card: to do'}
+                tone={card.data?.submittedAt ? 'done' : 'todo'}
+              />
             </View>
           ) : null}
         </Card>

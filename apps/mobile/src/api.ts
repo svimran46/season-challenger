@@ -272,6 +272,68 @@ async function idDocumentsForm(input: IdDocumentsInput): Promise<FormData> {
   return form;
 }
 
+export type MasteryAnswer =
+  | { kind: 'outcome'; pick: 'home' | 'draw' | 'away'; confidence: number }
+  | { kind: 'halfTimeLeader'; pick: 'home' | 'draw' | 'away' }
+  | { kind: 'range'; min: number; max: number }
+  | { kind: 'comparison'; pick: 'home' | 'away' }
+  | { kind: 'playerDuel'; pick: 'a' | 'b' }
+  | { kind: 'topPlayer'; playerId: string };
+
+export interface MasteryCall {
+  id: string;
+  position: number;
+  kind: MasteryAnswer['kind'];
+  prompt: string;
+  options: { value: string; label: string; detail: string | null }[];
+  range: { floor: number; ceiling: number; maxWidth: number; start: number } | null;
+  answer: MasteryAnswer | null;
+  result: {
+    summary: string;
+    correctOptions: string[];
+    accuracy: number | null;
+    weight: number | null;
+  } | null;
+}
+
+export interface MasteryCard {
+  id: string;
+  fixtureId: string;
+  status: 'open' | 'locked' | 'graded';
+  locksAt: string;
+  rewardCoins: number;
+  submittedAt: string | null;
+  score: number | null;
+  fixture: { kickoffAt: string; home: { shortName: string }; away: { shortName: string } };
+  calls: MasteryCall[];
+}
+
+export interface MyMastery {
+  rating: number;
+  tier: string;
+  cardsCompleted: number;
+  cardsForLeaderboard: number;
+  next: {
+    next: string;
+    rating: { have: number; need: number };
+    cards: { have: number; need: number };
+    share: number;
+  } | null;
+  history: { fixtureId: string; home: string; away: string; score: number }[];
+}
+
+export interface MasteryLeaderboard {
+  minCards: number;
+  entries: {
+    rank: number;
+    displayName: string;
+    rating: number;
+    tier: string;
+    cardsCompleted: number;
+    isYou: boolean;
+  }[];
+}
+
 export const api = {
   authMethods: () =>
     request<AuthMethods>('/v1/auth/methods').catch((error: unknown) => {
@@ -334,4 +396,14 @@ export const api = {
   redeem: (offerId: string, id: string) =>
     request<MyVoucher>('/v1/vouchers/redeem', post({ offerId, requestId: id })),
   myVouchers: () => request<MyVoucher[]>('/v1/me/vouchers'),
+
+  masteryCard: (fixtureId: string) =>
+    request<MasteryCard>(`/v1/mastery/cards?fixtureId=${encodeURIComponent(fixtureId)}`),
+  submitMasteryCard: (cardId: string, answers: { questionId: string; answer: MasteryAnswer }[]) =>
+    request<MasteryCard>(`/v1/mastery/cards/${cardId}/answers`, {
+      method: 'PUT',
+      body: JSON.stringify({ answers }),
+    }),
+  myMastery: () => request<MyMastery>('/v1/me/mastery'),
+  masteryLeaderboard: () => request<MasteryLeaderboard>('/v1/mastery/leaderboard'),
 };

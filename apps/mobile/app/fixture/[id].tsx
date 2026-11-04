@@ -18,6 +18,7 @@ const POSITION_NAMES: Record<Position, string> = {
 export default function FixtureScreen() {
   const t = useTheme();
   const { id } = useLocalSearchParams<{ id: string }>();
+  const router = useRouter();
   const fixture = useQuery({ queryKey: ['fixture', id], queryFn: () => api.fixture(id) });
   const finished = fixture.data?.status === 'finished';
   const points = useQuery({
@@ -73,6 +74,13 @@ export default function FixtureScreen() {
             </Card>
             {scheduled && contests.data ? (
               <>
+                <Button
+                  label="Open analysis card"
+                  kind="secondary"
+                  onPress={() =>
+                    router.push({ pathname: '/card/[fixtureId]', params: { fixtureId: id } })
+                  }
+                />
                 <SectionTitle>Tournaments</SectionTitle>
                 {contests.data.map((c) => (
                   <ContestCard key={c.id} contest={c} joined={joined.has(c.id)} />

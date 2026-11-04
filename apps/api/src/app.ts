@@ -30,6 +30,9 @@ import type { KycSettings } from './kyc/kyc.service';
 import type { DocumentVault } from './kyc/kyc.types';
 import { PgKycStore } from './kyc/pg-kyc.store';
 import { PgLedgerStore } from './ledger/pg-ledger.store';
+import { MasteryModule } from './mastery/mastery.module';
+import { PgMasteryStore } from './mastery/pg-mastery.store';
+import { pgPlayerNames } from './mastery/player-names';
 import { SquadsController } from './squads/squads.controller';
 import { Worker } from './worker';
 
@@ -99,6 +102,13 @@ export class AppModule {
           vault: options.kyc?.vault,
           settings: options.kyc?.settings,
           ...(db ? { store: new PgKycStore(db) } : {}),
+        }),
+        MasteryModule.register({
+          clock: options.clock,
+          economy,
+          // The worker grades with a database; without one, reads do, like tournaments.
+          gradeOnRead: !db,
+          ...(db ? { store: new PgMasteryStore(db), names: pgPlayerNames(db) } : {}),
         }),
       ],
       controllers: [HealthController, FixturesController, SquadsController],

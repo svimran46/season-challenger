@@ -136,6 +136,20 @@ too, so a tournament never waits on a tick.
 Players upload their ID for review; set `KYC_REVIEWER_TOKEN` and open `/review` to approve or
 reject. Photos are encrypted at rest. See [KYC.md](KYC.md).
 
+### Season Mastery
+
+| Method | Path                            | Notes                                                       |
+| ------ | ------------------------------- | ----------------------------------------------------------- |
+| GET    | `/v1/mastery/cards?fixtureId=`  | A match's card of 5 to 8 calls; results only once graded    |
+| PUT    | `/v1/mastery/cards/:id/answers` | Answers every call; changeable until kick-off, pays once    |
+| GET    | `/v1/me/mastery`                | Your rating, tier, progress and graded matches              |
+| GET    | `/v1/mastery/leaderboard`       | Season table by display name, for players with enough cards |
+
+Cards are generated from a hash of the fixture id, so they need no clock or randomness. Only calls
+the stats can resolve are generated, so there are no formation calls: no feed supplies formations
+yet. The worker grades finished matches and records the stats snapshot version used. A later
+correction does not change a graded card; regrading is not built.
+
 ### Where the economy is stored
 
 With `DATABASE_URL` set, players, coins (`PgLedgerStore`), tournaments, entries and vouchers live

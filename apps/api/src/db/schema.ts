@@ -546,6 +546,9 @@ export const analysisCard = pgTable('analysis_card', {
     .references(() => fixture.id),
   opensAt: timestamp('opens_at', { withTimezone: true }).notNull(),
   locksAt: timestamp('locks_at', { withTimezone: true }).notNull(),
+  /** The stats snapshot this card was graded from, so a later correction cannot rewrite it. */
+  gradedVersion: integer('graded_version'),
+  gradedAt: timestamp('graded_at', { withTimezone: true }),
 });
 
 export const cardQuestion = pgTable(
@@ -560,6 +563,8 @@ export const cardQuestion = pgTable(
       .references(() => questionTemplate.id),
     position: integer('position').notNull(),
     params: jsonb('params').notNull(),
+    /** CallResolution from @season/shared: what actually happened. Filled by grading. */
+    resolution: jsonb('resolution'),
   },
   (t) => [unique('card_question_position_uq').on(t.cardId, t.position)],
 );
