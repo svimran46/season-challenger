@@ -2,13 +2,13 @@
 
 Season Challenger is a pnpm monorepo in TypeScript.
 
-| Path              | What it is                                                                                                                     |
-| ----------------- | ------------------------------------------------------------------------------------------------------------------------------ |
-| `packages/shared` | Domain types and pure game rules: squad validation, fantasy points, contest ranking, Season Mastery grading, ratings and tiers |
-| `packages/feed`   | `FootballFeed` interface plus `FakeFeed`, an offline league of eight fictional clubs                                           |
-| `packages/wallet` | Coin ledger, rewards, tournament categories, prize tables and settlement, voucher redemption rules                             |
-| `apps/api`        | NestJS REST API and the Drizzle database schema                                                                                |
-| `apps/mobile`     | Expo (React Native) app with Expo Router                                                                                       |
+| Path              | What it is                                                                                                                                                              |
+| ----------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `packages/shared` | Domain types and pure game rules: squad validation, fantasy points, contest ranking, Season Mastery grading, ratings and tiers                                          |
+| `packages/feed`   | `FootballFeed` interface plus `FakeFeed`, an offline league of eight fictional clubs                                                                                    |
+| `packages/wallet` | Coin ledger, rewards, tournament categories, prize tables and settlement, voucher redemption rules, and the money flows (deposits, redeem, conversions, cash-out holds) |
+| `apps/api`        | NestJS REST API and the Drizzle database schema                                                                                                                         |
+| `apps/mobile`     | Expo (React Native) app with Expo Router                                                                                                                                |
 
 ## Requirements
 
@@ -107,6 +107,31 @@ Tournaments lock at kick-off (cancelled and refunded if they did not reach their
 pay out when the match is final. The worker does this every `WORKER_SECONDS`, and reads do it
 too, so a tournament never waits on a tick.
 
+### Money: deposits, redeem and cash out
+
+Deposits, cash→coin redeems, coin→cash conversions and withdrawals are on by default
+(`MONEY_ENABLED=false` turns them off). The flows, rules and the manual payout queue are
+documented in [docs/MONEY.md](docs/MONEY.md).
+
+| Method | Path                               | Notes                                                                           |
+| ------ | ---------------------------------- | ------------------------------------------------------------------------------- |
+| GET    | `/v1/me/money`                     | Cash balance, pending cash-outs, rates and limits from the server settings      |
+| GET    | `/v1/me/deposits`                  | Your deposit invoices and their status                                          |
+| POST   | `/v1/me/deposits`                  | `{ amountBdt, channel }`; returns the hosted checkout URL; coins not yet in     |
+| POST   | `/v1/payments/mock/checkout/:id`   | `{ outcome }` dev-only; the mock gateway's "Pay now" and "Cancel" buttons       |
+| POST   | `/v1/payments/webhook/:gateway`    | Gateways call this with a signed body; idempotent and replay-safe               |
+| POST   | `/v1/me/redeem`                    | `{ amountBdt, requestId }`; cash → coins at the deposit rate                    |
+| POST   | `/v1/me/convert`                   | `{ coins, requestId }`; won coins → cash at the stricter rate                   |
+| GET    | `/v1/me/withdrawals`               | Your cash-outs and their review status                                          |
+| POST   | `/v1/me/withdrawals`               | `{ amountBdt, channel, destination, requestId }`; holds the cash immediately    |
+| GET    | `/v1/admin/withdrawals?status=`    | Payout review queue with user info; needs `x-admin-token`                       |
+| POST   | `/v1/admin/withdrawals/:id/review` | `{ action: approve\|paid\|reject\|fail, payoutReference?, reason?, operator? }` |
+
+Environment: `PAYMENTS_GATEWAY` (only `mock` ships today), `PAYMENTS_SECRET` (falls back to
+`AUTH_SECRET`), `API_PUBLIC_URL` (builds payment links), `ADMIN_TOKEN` (default
+`dev-admin-token` in development; production demands 32+ random characters), `MONEY_*` rate and
+limit overrides (defaults documented in `.env.example`).
+
 ### Where the economy is stored
 
 With `DATABASE_URL` set, players, coins (`PgLedgerStore`), tournaments, entries and vouchers live
@@ -115,6 +140,8 @@ restart. The services only see the `EconomyRepository` interface in
 `apps/api/src/economy/stores.ts`, so both stores behave the same.
 
 - Writes that move coins run in the same database transaction as the ledger postings.
+- Money rows join the posting in the same transaction: the deposit invoice, webhook record and
+  withdrawal request commit with their hold/credit under row locks.
 - Joining locks the tournament row first, so two players cannot take the last seat.
 - Redeeming locks the offer row, so the last voucher in stock cannot be issued twice.
 - Lock, cancel and settle re-check the tournament under its row lock, so two instances never
@@ -124,7 +151,9 @@ restart. The services only see the `EconomyRepository` interface in
 
 Migration `0001_economy_in_postgres` makes player, tournament and entry ids text (player ids
 come from sign-in, tournament ids are readable and deterministic), keeps the squad on each entry,
-and keeps the partner and category on each issued voucher.
+and keeps the partner and category on each issued voucher. Migration `0003_sticky_patriot` adds
+the money tables — `deposit_invoice`, `payment_webhook`, `withdrawal_request` — and the money
+transaction kinds on the ledger.
 
 ## Database
 

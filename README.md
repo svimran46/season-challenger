@@ -12,11 +12,19 @@ A fantasy football app in the spirit of Dream11, with one extra category: **Seas
 Phase 1 (foundation) is in place: a TypeScript monorepo with the shared game rules, an offline
 fake football feed, a NestJS API, the Expo app shell and the Postgres schema.
 
-The coin economy is built in `packages/wallet` and served by the API. **No money goes in or out:**
-players get 500 bonus coins at sign-up plus daily and Season Mastery rewards, spend coins on
-tournaments (head-to-head, small league, mega, private), and redeem coins they _won_ for shop and
-travel discount vouchers. Vouchers are discounts only, tied to an ID-verified 18+ account, and
-never convert back to taka.
+The economy is built in `packages/wallet` and served by the API. Coins are the in-game
+currency: players get 500 bonus coins at sign-up plus daily and Season Mastery rewards, spend
+coins on tournaments (head-to-head, small league, mega, private), and redeem coins they _won_
+for shop and travel discount vouchers. Vouchers are discounts only, tied to an ID-verified 18+
+account, and never convert back to taka.
+
+**Money follows the same one-directional rule as Game of 11.** Taka enters through e-wallet
+deposits (bKash, Nagad, Rocket, Upay) and becomes bought coins for entries — bought coins can
+never become money again. Cash accumulates only from _won_ coins converting at the house rate,
+and every cash-out (min ৳500) is **held immediately** and queued for a **manual operator
+review** — nothing is paid out automatically. The payout queue records the player's phone,
+verification status, channel and wallet number; the operator sends the taka by hand and records
+the e-wallet reference (see [docs/MONEY.md](docs/MONEY.md)).
 
 | Layer         | Choice                                                                        |
 | ------------- | ----------------------------------------------------------------------------- |
