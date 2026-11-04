@@ -7,14 +7,9 @@ import type {
   SquadPick,
   SquadValidation,
 } from '@season/shared';
+import { clearToken, currentToken } from './session';
 
 const BASE_URL = process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:3000';
-
-/**
- * Stand-in player id until phone sign-in is built. The development API accepts it as the
- * signed-in player; production refuses it.
- */
-export const PLAYER_ID = process.env.EXPO_PUBLIC_DEV_PLAYER_ID ?? 'dev-player';
 
 /** A failed request, with the API's error code (e.g. insufficient_funds) when it sent one. */
 export class ApiError extends Error {
@@ -22,8 +17,22 @@ export class ApiError extends Error {
     readonly status: number,
     readonly code: string | undefined,
     message: string,
+    /** The whole error body, for extra fields such as retryAfterSeconds or attemptsLeft. */
+    readonly body: Record<string, unknown> = {},
   ) {
     super(message);
+  }
+
+  /** Seconds to wait before asking again (too_many_codes). */
+  get retryAfterSeconds(): number | undefined {
+    return typeof this.body.retryAfterSeconds === 'number'
+      ? this.body.retryAfterSeconds
+      : undefined;
+  }
+
+  /** Tries left before the code is used up (wrong_code). */
+  get attemptsLeft(): number | undefined {
+    return typeof this.body.attemptsLeft === 'number' ? this.body.attemptsLeft : undefined;
   }
 }
 
@@ -39,12 +48,21 @@ export interface FixtureDetail extends FixtureSummary {
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  const token = currentToken();
   const res = await fetch(`${BASE_URL}${path}`, {
     ...init,
-    headers: { 'Content-Type': 'application/json', 'x-user-id': PLAYER_ID, ...init?.headers },
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...init?.headers,
+    },
   });
   if (!res.ok) {
-    const body = (await res.json().catch(() => ({}))) as { error?: unknown; message?: unknown };
+    // The session has ended on the server (expired or signed out elsewhere): sign out here too.
+    // Only if this request used the token still held, so a late reply cannot undo a new sign-in.
+    if (res.status === 401 && token !== null && currentToken() === token) void clearToken();
+    const raw: unknown = await res.json().catch(() => ({}));
+    const body = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
     const message =
       typeof body.message === 'string'
         ? body.message
@@ -53,8 +71,10 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
       res.status,
       typeof body.error === 'string' ? body.error : undefined,
       message,
+      body,
     );
   }
+  if (res.status === 204) return undefined as T;
   return (await res.json()) as T;
 }
 
@@ -161,7 +181,33 @@ export function requestId(): string {
   return `${h.slice(0, 8)}-${h.slice(8, 12)}-${h.slice(12, 16)}-${h.slice(16, 20)}-${h.slice(20)}`;
 }
 
+export interface CodeSent {
+  /** The number in +880 form; send this back with the code. */
+  phone: string;
+  /** For display, e.g. "+880 1712-***678". */
+  maskedPhone: string;
+  expiresInSeconds: number;
+  resendInSeconds: number;
+}
+
+export interface SignedIn {
+  token: string;
+  expiresAt: string;
+  user: { id: string; phone: string; isNew: boolean };
+}
+
+export interface Me {
+  id: string;
+  phone: string;
+}
+
 export const api = {
+  requestCode: (phone: string) => request<CodeSent>('/v1/auth/code', post({ phone })),
+  verifyCode: (phone: string, code: string) =>
+    request<SignedIn>('/v1/auth/verify', post({ phone, code })),
+  signOut: () => request<void>('/v1/auth/sign-out', post()),
+  me: () => request<Me>('/v1/me'),
+
   season: () => request<Season & { currentGameweek: number }>('/v1/season'),
   fixtures: (gameweek: number) => request<FixtureSummary[]>(`/v1/fixtures?gameweek=${gameweek}`),
   fixture: (id: string) => request<FixtureDetail>(`/v1/fixtures/${id}`),

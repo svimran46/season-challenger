@@ -167,6 +167,49 @@ export const appUser = pgTable('app_user', {
   createdAt: createdAt(),
 });
 
+// ---------------------------------------------------------------- phone sign-in
+
+/**
+ * Codes and session tokens are stored only as keyed hashes. No foreign keys to app_user: that
+ * row is created lazily by the economy code, together with the sign-up bonus.
+ */
+
+/** One player per phone number (E.164, e.g. +8801712345678), and one number per player. */
+export const phoneIdentity = pgTable('phone_identity', {
+  phone: text('phone').primaryKey(),
+  userId: text('user_id').notNull().unique(),
+  createdAt: createdAt(),
+});
+
+/** A one-time code sent by SMS. Consumed once; refused after too many wrong guesses. */
+export const otpChallenge = pgTable(
+  'otp_challenge',
+  {
+    id: text('id').primaryKey(),
+    phone: text('phone').notNull(),
+    codeHash: text('code_hash').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull(),
+    expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+    /** Wrong guesses so far. */
+    attempts: integer('attempts').notNull().default(0),
+    consumedAt: timestamp('consumed_at', { withTimezone: true }),
+  },
+  (t) => [index('otp_challenge_phone_idx').on(t.phone, t.createdAt)],
+);
+
+/** A signed-in device. The bearer token itself is never stored. */
+export const authSession = pgTable(
+  'auth_session',
+  {
+    tokenHash: text('token_hash').primaryKey(),
+    userId: text('user_id').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull(),
+    expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+    revokedAt: timestamp('revoked_at', { withTimezone: true }),
+  },
+  (t) => [index('auth_session_user_idx').on(t.userId)],
+);
+
 // ---------------------------------------------------------------- fantasy
 
 export const squad = pgTable(

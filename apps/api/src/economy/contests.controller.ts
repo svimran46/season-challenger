@@ -1,6 +1,6 @@
 import { Body, Controller, Get, Inject, Param, Post, Query, UseGuards } from '@nestjs/common';
 import { z } from 'zod';
-import { CurrentUser, DevAuthGuard, OptionalUser } from '../common/auth';
+import { CurrentUser, SignedInGuard, OptionalUser } from '../common/auth';
 import { ZodPipe } from '../common/zod.pipe';
 import { ContestsService } from './contests.service';
 
@@ -37,7 +37,7 @@ export class ContestsController {
   }
 
   @Post()
-  @UseGuards(DevAuthGuard)
+  @UseGuards(SignedInGuard)
   createPrivate(
     @CurrentUser() userId: string,
     @Body(new ZodPipe(privateBody)) body: z.infer<typeof privateBody>,
@@ -46,7 +46,7 @@ export class ContestsController {
   }
 
   @Post(':id/entries')
-  @UseGuards(DevAuthGuard)
+  @UseGuards(SignedInGuard)
   join(
     @CurrentUser() userId: string,
     @Param('id') id: string,

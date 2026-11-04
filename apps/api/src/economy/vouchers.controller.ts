@@ -1,7 +1,7 @@
 import { Body, Controller, Get, Inject, Post, Query, UseGuards } from '@nestjs/common';
 import { VOUCHER_CATEGORIES } from '@season/wallet';
 import { z } from 'zod';
-import { CurrentUser, DevAuthGuard, OptionalUser } from '../common/auth';
+import { CurrentUser, SignedInGuard, OptionalUser } from '../common/auth';
 import { ZodPipe } from '../common/zod.pipe';
 import { VouchersService } from './vouchers.service';
 
@@ -24,7 +24,7 @@ export class VouchersController {
   }
 
   @Post('redeem')
-  @UseGuards(DevAuthGuard)
+  @UseGuards(SignedInGuard)
   redeem(
     @CurrentUser() userId: string,
     @Body(new ZodPipe(redeemBody)) body: z.infer<typeof redeemBody>,

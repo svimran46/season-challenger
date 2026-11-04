@@ -1,6 +1,6 @@
 import { Body, Controller, Get, HttpCode, Inject, Post, Query, UseGuards } from '@nestjs/common';
 import { z } from 'zod';
-import { CurrentUser, DevAuthGuard } from '../common/auth';
+import { CurrentUser, SignedInGuard } from '../common/auth';
 import { ZodPipe } from '../common/zod.pipe';
 import { ContestsService } from './contests.service';
 import { VouchersService } from './vouchers.service';
@@ -14,7 +14,7 @@ const verificationBody = z.object({
 
 /** The signed-in player's wallet, entries and vouchers. */
 @Controller('me')
-@UseGuards(DevAuthGuard)
+@UseGuards(SignedInGuard)
 export class MeController {
   constructor(
     @Inject(WalletService) private readonly wallet: WalletService,

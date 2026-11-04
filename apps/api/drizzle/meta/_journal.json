@@ -15,6 +15,13 @@
       "when": 1793755044785,
       "tag": "0001_economy_in_postgres",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1793756790211,
+      "tag": "0002_phone_sign_in",
+      "breakpoints": true
     }
   ]
 }

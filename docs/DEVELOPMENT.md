@@ -25,8 +25,10 @@ pnpm dev:api         # API on http://localhost:3000
 pnpm dev:mobile      # Expo dev server; press w for web, or scan the QR code with Expo Go
 ```
 
-The app signs in as `EXPO_PUBLIC_DEV_PLAYER_ID` (default `dev-player`) until phone sign-in is
-built; give each test phone its own id to play against each other.
+The app signs in with a Bangladesh mobile number and a six-digit code. In development no text is
+sent: the API prints the code in its log (`[SMS] to +880 1712-***678 (+8801712345678): 482913 is
+your Season Challenger code...`). Use any valid-looking number, e.g. `01712345678`, and a different
+number per test phone to play against each other.
 
 On a physical phone, set `EXPO_PUBLIC_API_URL` to your computer's LAN address, for example
 `http://192.168.1.20:3000`, because `localhost` on the phone is the phone itself.
@@ -52,10 +54,34 @@ snapshots are append-only by version, and an advisory lock lets one instance wri
 | GET    | `/v1/fixtures/:id/points`        | Fantasy points per player, finished fixtures only |
 | POST   | `/v1/squads/validate`            | Checks a squad; locked once the fixture kicks off |
 
-### Coins, tournaments and vouchers
+### Phone sign-in
 
-Signed-in routes need `x-user-id` until phone sign-in is built. This works in development only
-(`AUTH_MODE=dev`, the default outside production); production refuses those routes.
+| Method | Path                | Notes                                                                 |
+| ------ | ------------------- | --------------------------------------------------------------------- |
+| POST   | `/v1/auth/code`     | `{ phone }`; texts a six-digit code. Accepts `01712345678` or `+880…` |
+| POST   | `/v1/auth/verify`   | `{ phone, code }`; returns `{ token, expiresAt, user }`               |
+| POST   | `/v1/auth/sign-out` | Ends this device's session                                            |
+| GET    | `/v1/me`            | The signed-in account: id and phone number                            |
+
+Signed-in routes take `Authorization: Bearer <token>`. Sessions last 90 days; the server stores
+only a hash of each token and of each code. A code works once, for five minutes, and stops after
+five wrong guesses. A number can get one code a minute and five an hour, and one address 20 an
+hour. Errors come back as `{ error, message }` with `invalid_phone`, `too_many_codes`
+(`retryAfterSeconds`), `sms_failed`, `wrong_code` (`attemptsLeft`), `code_expired`,
+`too_many_attempts` or `signed_out`.
+
+The first sign-in links the number to a new player; the 500-coin bonus is paid on their first
+wallet view as before.
+
+Codes go through an `SmsSender` (`apps/api/src/auth/sms.ts`). `SMS_PROVIDER=console`, the only
+one so far, writes them to the log, and production refuses to start with it, as it does without an
+`AUTH_SECRET` of 32+ characters. Set `TRUST_PROXY=true` behind a load balancer so the per-address
+limit sees client addresses.
+
+In development (`AUTH_MODE=dev`, the default outside production) the API also accepts an
+`x-user-id` header as sign-in, for tests and scripts. Production ignores it.
+
+### Coins, tournaments and vouchers
 
 | Method | Path                            | Notes                                                               |
 | ------ | ------------------------------- | ------------------------------------------------------------------- |

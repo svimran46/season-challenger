@@ -10,6 +10,10 @@ import {
 import { NestFactory } from '@nestjs/core';
 import type { FootballFeed } from '@season/feed';
 import type { VoucherOffer } from '@season/wallet';
+import { AuthModule } from './auth/auth.module';
+import type { AuthSettings } from './auth/auth.service';
+import { PgAuthStore } from './auth/pg-auth.store';
+import type { SmsSender } from './auth/sms';
 import { WalletErrorFilter } from './common/wallet-error.filter';
 import { WORKER_SECONDS, type Clock } from './common/tokens';
 import type { Database } from './db/client';
@@ -43,6 +47,13 @@ export interface AppModuleOptions {
   database?: { db: Database; close?: () => Promise<void> };
   workerSeconds: number;
   offers?: readonly VoucherOffer[];
+  auth?: AuthAppOptions;
+}
+
+export interface AuthAppOptions {
+  /** Where sign-in codes go; the server log unless given. */
+  sms?: SmsSender;
+  settings?: Partial<AuthSettings>;
 }
 
 @Module({})
@@ -53,6 +64,12 @@ export class AppModule {
     return {
       module: AppModule,
       imports: [
+        AuthModule.register({
+          clock: options.clock,
+          sms: options.auth?.sms,
+          settings: options.auth?.settings,
+          ...(db ? { store: new PgAuthStore(db) } : {}),
+        }),
         FeedModule.register(options.feed, options.database?.db),
         EconomyModule.register({
           clock: options.clock,
@@ -81,6 +98,8 @@ export interface CreateAppOptions {
   workerSeconds?: number;
   /** Voucher offers saved on boot. Empty until real partners sign; tests pass a fixture. */
   offers?: readonly VoucherOffer[];
+  /** Phone sign-in: SMS sender and limits. Tests pass a MemorySmsSender to read codes back. */
+  auth?: AuthAppOptions;
   logger?: false;
 }
 
@@ -95,6 +114,7 @@ export async function createApp(options: CreateAppOptions = {}): Promise<INestAp
       database: options.database,
       workerSeconds: options.workerSeconds ?? 60,
       offers: options.offers,
+      auth: options.auth,
     }),
     { logger: options.logger === false ? false : undefined },
   );
