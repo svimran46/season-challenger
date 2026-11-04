@@ -20,7 +20,12 @@ export type WalletErrorCode =
   | 'redemptions_blocked'
   | 'limit_reached'
   | 'insufficient_winnings'
-  | 'voucher_not_usable';
+  | 'voucher_not_usable'
+  // money
+  | 'insufficient_cash'
+  | 'invalid_payout'
+  | 'invalid_deposit'
+  | 'not_reviewable';
 
 /** Every rule the wallet enforces fails with one of these, so the API can map codes to replies. */
 export class WalletError extends Error {

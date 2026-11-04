@@ -9,7 +9,14 @@ export type TransactionKind =
   | 'entry_refund'
   | 'contest_settlement'
   | 'voucher_redemption'
-  | 'voucher_refund';
+  | 'voucher_refund'
+  | 'deposit'
+  | 'deposit_refund'
+  | 'redeem'
+  | 'coin_to_cash'
+  | 'withdraw_hold'
+  | 'withdraw_release'
+  | 'withdraw_paid';
 
 export const TRANSACTION_KINDS: readonly TransactionKind[] = [
   'sign_up_bonus',
@@ -20,6 +27,13 @@ export const TRANSACTION_KINDS: readonly TransactionKind[] = [
   'contest_settlement',
   'voucher_redemption',
   'voucher_refund',
+  'deposit',
+  'deposit_refund',
+  'redeem',
+  'coin_to_cash',
+  'withdraw_hold',
+  'withdraw_release',
+  'withdraw_paid',
 ];
 
 /** One side of a transaction. Positive amounts raise the account's balance. */
